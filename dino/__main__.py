@@ -9,6 +9,7 @@ from dino import (
     OpenScaleReader,
     Plotter,
 )
+from dino.buffer import Buffer
 from dino.openscale_serial.__main__ import collect_args
 from dino.openscale_serial.openscale_reader import (
     read_from_serial,
@@ -16,8 +17,8 @@ from dino.openscale_serial.openscale_reader import (
 from dino.pattern_matching.patterns import eq_5p
 
 
-def pass_to_plotter(plotter: Plotter, series_name: str, *args):
-    plotter.get_differentiable_series(series_name).append(args)
+def pass_to_plotter(plotter: Plotter, series_name: str, buffer: Buffer):
+    plotter.get_differentiable_series(series_name).append(buffer.last_item)
 
 
 def main():
@@ -28,6 +29,7 @@ def main():
 
     state_machine = DinoStateMachine()
     pattern_matcher = PatternMatcher()
+    buffer = Buffer()
 
     pattern_matcher.register_pattern(
         "steady",
@@ -40,8 +42,16 @@ def main():
     )
 
     # Create a reader that's bound to the plotter
-    reader = OpenScaleReader(partial(pass_to_plotter, plotter, "Force"))
-    reader.register_secondary_callback(lambda r: pattern_matcher.match(r.buffer))
+    reader = OpenScaleReader(buffer.append)
+    buffer.register_callback(
+        partial(
+            Buffer.call_with_last_item,
+            plotter.get_differentiable_series("Force").append,
+        )
+    )
+    buffer.register_callback(
+        partial(Buffer.call_with_underlying, pattern_matcher.match)
+    )
 
     # Run the openscale data collection in the background so it can ingest data as fast as possible
     runner = Thread(

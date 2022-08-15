@@ -6,7 +6,6 @@ from serial import Serial
 DEFAULT_PORT = "COM4"
 DEFAULT_BAUD = 115_200
 SAMPLES_PER_SEC = 20
-BUFFER_MINUTES = 1
 
 
 def read_from_serial(
@@ -31,13 +30,10 @@ class OpenScaleReader:
     def __init__(
         self,
         primary_callback: t.Callable = None,
-        maxlen=SAMPLES_PER_SEC * 60 * BUFFER_MINUTES,
     ):
         self.is_reading: bool = False
         self.should_read: bool = True
-        self.buffer = deque(maxlen=maxlen)
         self.callback: t.Callable = primary_callback
-        self.secondary_callbacks = []
 
     def handle_line(self, line: bytes) -> bool:
         line = line.decode("utf-8").strip()
@@ -58,18 +54,11 @@ class OpenScaleReader:
             ts, weight, _unit, _ = tuple(line.split(","))
 
             relevant = (int(ts), float(weight))
-            self.buffer.append(relevant)
 
             if (res := self.callback(*relevant)) is not None:
                 self.should_read = res
-
-            for cb in self.secondary_callbacks:
-                cb(self)
 
         return self.should_read
 
     def stop(self):
         self.should_read = False
-
-    def register_secondary_callback(self, cb: t.Callable):
-        self.secondary_callbacks.append(cb)

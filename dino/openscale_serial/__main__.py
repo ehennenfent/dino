@@ -9,9 +9,7 @@ from dino.openscale_serial.openscale_reader import (
 
 
 def collect_args():
-    parser = argparse.ArgumentParser(
-        description="Print data from serial port"
-    )
+    parser = argparse.ArgumentParser(description="Print data from serial port")
     parser.add_argument(
         "-p",
         "--port",
