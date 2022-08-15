@@ -29,8 +29,8 @@ class DinoStateMachine:
     def __init__(self):
         self.current_state = State.UNCALIBRATED
         self.allowed_transitions = {
-            State.UNCALIBRATED: {State.STEADY},
-            State.STEADY: {},
+            State.UNCALIBRATED: {State.UNCALIBRATED, State.STEADY},
+            State.STEADY: {State.STEADY},
             State.JUMP_START: {},
             State.JUMPING: {},
             State.JUMP_END: {},
@@ -46,7 +46,8 @@ class DinoStateMachine:
         new_state = self.current_state
 
         if self.current_state == State.UNCALIBRATED:
-            pass
+            if event == event.STEADY:
+                new_state = State.STEADY
         elif self.current_state == State.STEADY:
             if event == Event.SPIKE_START_NEGATIVE:
                 new_state = State.JUMP_START
@@ -61,10 +62,12 @@ class DinoStateMachine:
 
     def transition(self, new_state: State):
         if new_state in self.allowed_transitions.get(self.current_state, set()):
-            self.current_state = new_state
+            if new_state != self.current_state:
+                print(self.current_state, "-->", new_state)
             maybe_callback = self.transition_callbacks.get(self.current_state, {}).get(
                 new_state, None
             )
+            self.current_state = new_state
             if maybe_callback is not None:
                 maybe_callback()
         else:

@@ -30,12 +30,15 @@ class OpenScaleReader:
     """Helper class to drop everything before `Readings:` and parse everything after"""
 
     def __init__(
-        self, callback: t.Callable = None, maxlen=SAMPLES_PER_SEC * 60 * BUFFER_MINUTES
+        self,
+        primary_callback: t.Callable = None,
+        maxlen=SAMPLES_PER_SEC * 60 * BUFFER_MINUTES,
     ):
         self.is_reading: bool = False
         self.should_read: bool = True
         self.buffer = deque(maxlen=maxlen)
-        self.callback: t.Callable = callback
+        self.callback: t.Callable = primary_callback
+        self.secondary_callbacks = []
 
     def handle_line(self, line: bytes) -> bool:
         line = line.decode("utf-8").strip()
@@ -61,10 +64,16 @@ class OpenScaleReader:
             if (res := self.callback(*relevant)) is not None:
                 self.should_read = res
 
+            for cb in self.secondary_callbacks:
+                cb(self)
+
         return self.should_read
 
     def stop(self):
         self.should_read = False
+
+    def register_secondary_callback(self, cb: t.Callable):
+        self.secondary_callbacks.append(cb)
 
 
 def collect_args():
