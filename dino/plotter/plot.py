@@ -1,32 +1,59 @@
 import typing as t
 from collections import deque
 
+import matplotlib
+
+matplotlib.rcParams["toolbar"] = "toolmanager"
+from matplotlib.backend_tools import ToolToggleBase
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Button
 from numpy import diff
 
-from dino.openscale_serial.openscale_reader import SAMPLES_PER_SEC, BUFFER_MINUTES
+from dino.buffer.buffer import BUFFER_MINUTES
+from dino.openscale_serial.openscale_reader import SAMPLES_PER_SEC
+
+# Look, I don't like having this global either, but if matplotlib is going to do everything as singletons,
+# I guess I will too
+ANIMATION = None
+
+
+def pause():
+    if ANIMATION is not None:
+        ANIMATION.pause()
+
+
+def resume():
+    if ANIMATION is not None:
+        ANIMATION.resume()
+
+
+class PauseTool(ToolToggleBase):
+    """Temporarily stop the data from scrolling"""
+
+    default_keymap = " "
+    description = "Pause autoscroll"
+    default_toggled = False
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def enable(self, *args):
+        pause()
+
+    def disable(self, *args):
+        resume()
 
 
 class Plotter:
-    def __init__(self):
+    def __init__(self, n_derivates=1):
         self.figure = plt.figure()
         self.plot = self.figure.add_subplot(1, 1, 1)
         self.series: t.Dict[str, t.Deque[t.Tuple]] = {}
-        self.animation = None
+        self.n_derivatives = n_derivates
 
-        axprev = plt.axes([0.7, 0.05, 0.1, 0.075])
-        axnext = plt.axes([0.81, 0.05, 0.1, 0.075])
-
-        # axcalib = plt.axes([0.81, 0.05, 0.1, 0.075])
-
-        self.bnext = Button(axnext, "Pause")
-        self.bnext.on_clicked(self.pause)
-        self.bprev = Button(axprev, "Resume")
-        self.bprev.on_clicked(self.resume)
-        # self.b = Button(axprev, "Resume")
-        # self.bprev.on_clicked(self.resume)
+        tm = self.figure.canvas.manager.toolmanager
+        self.figure.canvas.manager.toolmanager.add_tool("Pause", PauseTool)
+        self.figure.canvas.manager.toolbar.add_tool(tm.get_tool("Pause"), "toolgroup")
 
     def _draw(self, _i):
         """Called once per interval to update the displayed graph"""
@@ -38,7 +65,7 @@ class Plotter:
             self.plot.plot(xs, ys, label=label)
 
             derivatives = []
-            for nth in range(2):
+            for nth in range(self.n_derivatives):
                 derivatives.append(diff(ys, nth + 1))
                 self.plot.plot(
                     xs[nth + 1 :], derivatives[nth], label=label + "_prime" * (nth + 1)
@@ -59,9 +86,8 @@ class Plotter:
             self.plot.legend()
 
     def animate(self, interval=1000):
-        self.animation = animation.FuncAnimation(
-            self.figure, self._draw, interval=interval
-        )
+        global ANIMATION
+        ANIMATION = animation.FuncAnimation(self.figure, self._draw, interval=interval)
         plt.show()
 
     def get_differentiable_series(self, key: str) -> t.Deque[t.Tuple]:
@@ -73,9 +99,7 @@ class Plotter:
         plt.close(self.figure)
 
     def pause(self, _event):
-        if self.animation is not None:
-            self.animation.pause()
+        pause()
 
     def resume(self, _event):
-        if self.animation is not None:
-            self.animation.resume()
+        resume()
