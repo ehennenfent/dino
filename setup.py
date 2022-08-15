@@ -17,7 +17,7 @@ setup(
     package_dir={"": "dino"},
     packages=find_packages(where="src"),
     python_requires=">=3.9, <4",
-    install_requires=["matplotlib", "pyserial", "scipy"],
+    install_requires=["matplotlib", "numpy", "pyserial"],
     entry_points={
         "console_scripts": [
             "scaleplot=dino.plotter.plot_serial:main",

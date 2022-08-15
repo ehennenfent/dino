@@ -6,7 +6,8 @@ from serial import Serial
 
 DEFAULT_PORT = "COM4"
 DEFAULT_BAUD = 115_200
-SAMPLES_PER_SEC = 1
+SAMPLES_PER_SEC = 20
+BUFFER_MINUTES = 1
 
 
 def read_from_serial(
@@ -28,7 +29,9 @@ def read_from_serial(
 class OpenScaleReader:
     """Helper class to drop everything before `Readings:` and parse everything after"""
 
-    def __init__(self, callback: t.Callable = None, maxlen=SAMPLES_PER_SEC * 60 * 20):
+    def __init__(
+        self, callback: t.Callable = None, maxlen=SAMPLES_PER_SEC * 60 * BUFFER_MINUTES
+    ):
         self.is_reading: bool = False
         self.should_read: bool = True
         self.buffer = deque(maxlen=maxlen)
@@ -50,7 +53,7 @@ class OpenScaleReader:
         if self.is_reading:
             # This probably needs better error handling in case we get malformed output. It's a microcontroller,
             # after all.
-            ts, weight, _unit, _temp_onboard, _temp_remote, _ = tuple(line.split(","))
+            ts, weight, _unit, _ = tuple(line.split(","))
 
             relevant = (int(ts), float(weight))
             self.buffer.append(relevant)
