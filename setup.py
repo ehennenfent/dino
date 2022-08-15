@@ -20,8 +20,8 @@ setup(
     install_requires=["matplotlib", "numpy", "pyserial"],
     entry_points={
         "console_scripts": [
-            "scaleplot=dino.plotter.plot_serial:main",
-            "scaleread=dino.plotter.read_serial:main",
+            "scaleplot=dino.__main__:main",
+            "scaleread=dino.openscale_serial.__main__:main",
         ],
     },
 )

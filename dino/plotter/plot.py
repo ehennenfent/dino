@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from numpy import diff
 
-from dino.plotter.read_serial import SAMPLES_PER_SEC, BUFFER_MINUTES
+from dino.openscale_serial.openscale_reader import SAMPLES_PER_SEC, BUFFER_MINUTES
 
 
 class Plotter:

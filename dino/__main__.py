@@ -1,11 +1,19 @@
 from functools import partial
 from threading import Thread
 
-from dino.plotter.plot import Plotter
-from dino.plotter.read_serial import OpenScaleReader, read_from_serial, collect_args
-from dino.state_machine.pattern_matcher import PatternMatcher
-from dino.state_machine.patterns import eq_5p
-from dino.state_machine.state_machine import DinoStateMachine, State, Event
+from dino import (
+    DinoStateMachine,
+    Event,
+    State,
+    PatternMatcher,
+    OpenScaleReader,
+    Plotter,
+)
+from dino.openscale_serial.__main__ import collect_args
+from dino.openscale_serial.openscale_reader import (
+    read_from_serial,
+)
+from dino.pattern_matching.patterns import eq_5p
 
 
 def pass_to_plotter(plotter: Plotter, series_name: str, *args):
