@@ -1,1 +1,2 @@
-from .state_machine import DinoStateMachine, State, Event
+from .state_machine import DinoStateMachine
+from .types import *

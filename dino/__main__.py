@@ -3,11 +3,11 @@ from threading import Thread
 
 from dino import (
     DinoStateMachine,
-    Event,
-    State,
     PatternMatcher,
     OpenScaleReader,
     Plotter,
+    State,
+    Event,
 )
 from dino.buffer import Buffer
 from dino.openscale_serial.__main__ import collect_args

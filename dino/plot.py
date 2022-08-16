@@ -9,7 +9,7 @@ import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 from numpy import diff
 
-from dino.buffer.buffer import BUFFER_MINUTES
+from dino.buffer import BUFFER_MINUTES
 from dino.openscale_serial.openscale_reader import SAMPLES_PER_SEC
 
 # Look, I don't like having this global either, but if matplotlib is going to do everything as singletons,
