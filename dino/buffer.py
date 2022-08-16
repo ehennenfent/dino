@@ -7,7 +7,6 @@ BUFFER_MINUTES = 1
 
 class Buffer:
     def __init__(self, maxlen=SAMPLES_PER_SEC * 60 * BUFFER_MINUTES):
-        self.tare = None
         self.buffer = deque(maxlen=maxlen)
         self.callbacks = []
 
@@ -35,3 +34,9 @@ class Buffer:
     def dump(self, file_like: t.TextIO):
         for line in self.buffer:
             file_like.write(repr(line) + "\n")
+
+    def is_empty(self):
+        return len(self.buffer) == 0
+
+    def clear(self):
+        self.buffer.clear()

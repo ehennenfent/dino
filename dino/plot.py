@@ -70,12 +70,6 @@ class Plotter:
                 self.plot.plot(
                     xs[nth + 1 :], derivatives[nth], label=label + "_prime" * (nth + 1)
                 )
-            #
-            # for x, d in zip(xs[1 :], derivatives[0]):
-            #     if d > 10:
-            #         self.plot.vlines(x=x, ymin=-500, ymax=500, colors="red")
-            #     if d < -10:
-            #         self.plot.vlines(x=x, ymin=-500, ymax=500, colors="green")
 
         # Format plot
         plt.xticks(rotation=45, ha="right")
@@ -103,3 +97,6 @@ class Plotter:
 
     def resume(self, _event):
         resume()
+
+    def draw_vertical_line(self, x, color="red"):
+        self.plot.vlines(x=x, ymin=-50, ymax=50, colors=color)

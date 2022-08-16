@@ -3,11 +3,11 @@ import unittest
 from dataclasses import dataclass, field
 from operator import gt, lt
 
+from dino.util import extract_tail
 
-def _extract_tail(buffer: t.Union[t.List, t.Deque], n: int) -> t.List:
-    buf_len = len(buffer)
-    # TODO: REMOVE [1] BECAUSE THIS SHOULDN'T REQUIRE TUPLES
-    return list(buffer[i][1] for i in range(max(0, buf_len - n), buf_len))
+
+def get_second(l: list):
+    return [i[1] for i in l]
 
 
 @dataclass
@@ -19,7 +19,9 @@ class PatternMatcher:
 
     def match(self, data: t.Union[t.Deque, t.List]):
         for pattern, callback in self.patterns.values():
-            if self._match_pattern(_extract_tail(data, len(pattern) + 1), pattern):
+            if self._match_pattern(
+                get_second(extract_tail(data, len(pattern) + 1)), pattern
+            ):
                 callback()
 
     @staticmethod
