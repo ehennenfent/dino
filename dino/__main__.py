@@ -14,7 +14,7 @@ from dino.openscale_serial.__main__ import collect_args
 from dino.openscale_serial.openscale_reader import (
     read_from_serial,
 )
-from dino.pattern_matching.patterns import eq_5p
+from dino.pattern_matching.patterns import eq_5p, gt_pos_5p, lt_pos_5p
 
 
 def main():
@@ -37,6 +37,18 @@ def main():
         "steady",
         (eq_5p, eq_5p, eq_5p, eq_5p),  # 5 samples within 5% of each other
         partial(state_machine.receive_event, Event.STEADY),
+    )
+
+    pattern_matcher.register_pattern(
+        "spike_up",
+        (gt_pos_5p, gt_pos_5p, gt_pos_5p),
+        partial(state_machine.receive_event, Event.SPIKE_START_POSITIVE),
+    )
+
+    pattern_matcher.register_pattern(
+        "spike_peak",
+        (gt_pos_5p, lt_pos_5p),
+        partial(state_machine.receive_event, Event.SPIKE_PEAK_POSITIVE),
     )
 
     state_machine.register_callback(

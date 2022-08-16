@@ -2,6 +2,10 @@ from functools import partial, reduce
 import operator
 
 
+def anything(_a, _b):
+    return True
+
+
 def _chain(comparators, *args):
     return reduce(operator.and_, (c(*args) for c in comparators))
 
