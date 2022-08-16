@@ -17,6 +17,7 @@ from dino.openscale_serial.openscale_reader import (
 )
 from dino.pattern_matching.patterns import eq_5p, gt_pos_5p, lt_pos_5p, eq_1p
 from dino.physics import PhysicsSolver
+from dino.smoother import Smoother
 
 
 def main():
@@ -34,32 +35,34 @@ def main():
     # Add a buffer to store the last several samples
     buffer = Buffer()
 
+    smoother = Smoother()
+
     physics = PhysicsSolver(buffer)
 
-    # Create some patterns
-    pattern_matcher.register_pattern(
-        "steady",
-        (eq_5p, eq_5p, eq_5p, eq_5p),  # 5 samples within 5% of each other
-        partial(state_machine.receive_event, Event.STEADY),
-    )
+    # # Create some patterns
+    # pattern_matcher.register_pattern(
+    #     "steady",
+    #     (eq_5p, eq_5p, eq_5p, eq_5p),  # 5 samples within 5% of each other
+    #     partial(state_machine.receive_event, Event.STEADY),
+    # )
 
     pattern_matcher.register_pattern(
         "steady_1s",
         (eq_1p,) * SAMPLES_PER_SEC,  # 20 samples within 1% of each other
         physics.calibrate_steady_state,
     )
-
-    pattern_matcher.register_pattern(
-        "spike_up",
-        (gt_pos_5p, gt_pos_5p, gt_pos_5p),
-        partial(state_machine.receive_event, Event.SPIKE_START_POSITIVE),
-    )
-
-    pattern_matcher.register_pattern(
-        "spike_peak",
-        (gt_pos_5p, lt_pos_5p),
-        partial(state_machine.receive_event, Event.SPIKE_PEAK_POSITIVE),
-    )
+    #
+    # pattern_matcher.register_pattern(
+    #     "spike_up",
+    #     (gt_pos_5p, gt_pos_5p, gt_pos_5p),
+    #     partial(state_machine.receive_event, Event.SPIKE_START_POSITIVE),
+    # )
+    #
+    # pattern_matcher.register_pattern(
+    #     "spike_peak",
+    #     (gt_pos_5p, lt_pos_5p),
+    #     partial(state_machine.receive_event, Event.SPIKE_PEAK_POSITIVE),
+    # )
 
     state_machine.register_callback(
         State.UNCALIBRATED, State.STEADY, lambda: print("Calibrated!")
@@ -69,10 +72,10 @@ def main():
     reader = OpenScaleReader(buffer.append)
 
     def pass_tared_to_plotter(last_item):
-        x, y = last_item
-        plotter.get_differentiable_series("Force").append(
-            (x, physics.correct_for_tare(y))
-        )
+        ts, y = last_item
+        smoother.receive_item(ts, y) #physics.correct_for_tare(y))
+
+    smoother.register_callback(plotter.get_differentiable_series("Force").append)
 
     # Plot the data as it comes in
     buffer.register_callback(
