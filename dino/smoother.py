@@ -3,6 +3,7 @@ import typing as t
 SAME_FACTOR = 3
 SPIKE_FACTOR = 40
 
+
 def _check_for_spike(beginning, middle, end):
     _, y_begin = beginning
     _, y_end = end
@@ -17,7 +18,6 @@ def _check_for_spike(beginning, middle, end):
 
 
 class Smoother:
-
     def __init__(self):
         self.buffered = (None, None)
         self.callbacks = []
@@ -42,8 +42,3 @@ class Smoother:
                 second_buffered = (second_buffered[0], (first_buffered[1] + value) / 2)
             self.buffered = (second_buffered, (ts, value))
             self._call_all(*second_buffered)
-
-
-
-
-
