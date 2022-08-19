@@ -23,11 +23,11 @@ def _arbitrary_comparison_thresh(comparator, threshold, a, b):
 
 
 def ne_thresh(threshold: float, a, b):
-    return abs(a - b) / max(b, 0.000001) > threshold
+    return abs(a - b) / b > threshold
 
 
 def eq_thresh(threshold: float, a, b):
-    return abs(a - b) / max(b, 0.000001) < threshold
+    return abs(a - b) / b < threshold
 
 
 gt_thresh = partial(_arbitrary_comparison_thresh, operator.gt)
