@@ -56,9 +56,10 @@ class PhysicsSolver:
 
     def receive_force_data(self, last_item):
         def add_entry(old_entry, new_entry):
-            ts, new = new_entry
-            _, old = old_entry
-            return ts, old + new
+            ts_new, new = new_entry
+            ts_old, old = old_entry
+            delta_t = (ts_new - ts_old) / 1000
+            return ts_new, old + new * delta_t
 
         if self.steady_weight is not None:
             ts, y = last_item
