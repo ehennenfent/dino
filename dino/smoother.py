@@ -1,6 +1,7 @@
 import typing as t
 
-SPIKE_FACTOR = 20
+SAME_FACTOR = 3
+SPIKE_FACTOR = 40
 
 def _check_for_spike(beginning, middle, end):
     _, y_begin = beginning
@@ -8,7 +9,12 @@ def _check_for_spike(beginning, middle, end):
     _, y_middle = middle
 
     y_mean = (y_begin + y_end) / 2
-    return abs(y_middle - y_mean) / y_mean > SPIKE_FACTOR
+    if abs(y_end - y_begin) < SAME_FACTOR:
+        return abs(y_middle - y_mean) > SPIKE_FACTOR
+    return False
+
+    # return abs(y_middle - y_mean) / y_mean > SPIKE_FACTOR
+
 
 class Smoother:
 
