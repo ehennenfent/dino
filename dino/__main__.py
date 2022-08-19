@@ -104,6 +104,7 @@ def main():
 
     # Show the graph. This will block until the X button is clicked
     plotter.animate()
+    print("Stopped animation")
 
     # Kill the thread reading the data
     reader.stop()
