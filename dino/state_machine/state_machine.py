@@ -1,5 +1,6 @@
 import typing as t
 
+from dino.openscale_serial.openscale_reader import SAMPLES_PER_SEC
 from .types import State, Event
 
 
@@ -8,12 +9,12 @@ class DinoStateMachine:
         self.current_state = State.UNCALIBRATED
         self.allowed_transitions = {
             State.UNCALIBRATED: {State.UNCALIBRATED, State.STEADY},
-            State.STEADY: {State.STEADY},
-            State.JUMP_START: {},
-            State.JUMPING: {},
-            State.JUMP_END: {},
+            State.STEADY: {State.STEADY, State.DUCKING, State.JUMPING},
+            State.JUMPING: {State.JUMPING, State.STEADY},
+            State.DUCKING: {State.DUCKING, State.STEADY, State.JUMPING},
         }
         self.transition_callbacks = {}
+        self.time_in_state = 0
 
     def register_callback(
         self, from_state: State, to_state: State, callback: t.Callable
@@ -23,21 +24,25 @@ class DinoStateMachine:
     def receive_event(self, event: Event):
         new_state = self.current_state
 
-        if event != event.STEADY:
-            print(event)
-
         if self.current_state == State.UNCALIBRATED:
-            if event == event.STEADY:
+            if event == event.VELOCITY_STEADY:
                 new_state = State.STEADY
         elif self.current_state == State.STEADY:
-            if event == Event.SPIKE_START_NEGATIVE:
-                new_state = State.JUMP_START
-        elif self.current_state == State.JUMP_START:
-            pass
+            if event in (Event.VELOCITY_POSITIVE_SMALL, Event.VELOCITY_POSITIVE_LARGE):
+                new_state = State.JUMPING
+            if event == Event.VELOCITY_NEGATIVE:
+                new_state = State.DUCKING
         elif self.current_state == State.JUMPING:
-            pass
-        elif self.current_state == State.JUMP_END:
-            pass
+            if event == Event.VELOCITY_STEADY:
+                new_state = State.STEADY
+            # Revert to steady after time passes
+            if self.time_in_state >= SAMPLES_PER_SEC:
+                new_state = State.STEADY
+        elif self.current_state == State.DUCKING:
+            if event == Event.VELOCITY_POSITIVE_SMALL:
+                new_state = State.STEADY
+            if event == Event.VELOCITY_POSITIVE_LARGE:
+                new_state = State.JUMPING
 
         self.transition(new_state)
 
@@ -45,6 +50,9 @@ class DinoStateMachine:
         if new_state in self.allowed_transitions.get(self.current_state, set()):
             if new_state != self.current_state:
                 print(self.current_state, "-->", new_state)
+                self.time_in_state = 0
+
+            self.time_in_state += 1
             maybe_callback = self.transition_callbacks.get(self.current_state, {}).get(
                 new_state, None
             )

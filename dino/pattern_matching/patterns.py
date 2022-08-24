@@ -62,3 +62,11 @@ lt_neg_1p = partial(_chain, [partial(lt_thresh, 0.01), negative])
 lt_neg_5p = partial(_chain, [partial(lt_thresh, 0.05), negative])
 lt_neg_10p = partial(_chain, [partial(lt_thresh, 0.1), negative])
 lt_neg_20p = partial(_chain, [partial(lt_thresh, 0.2), negative])
+
+
+def mag_rel(op, mag):
+    return lambda a, _: op(abs(a), mag)
+
+
+def abs_rel(op, val):
+    return lambda a, _: op(a, val)

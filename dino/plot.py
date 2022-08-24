@@ -50,6 +50,7 @@ class Plotter:
         self.plot = self.figure.add_subplot(1, 1, 1)
         self.series: t.Dict[str, t.Deque[t.Tuple]] = {}
         self.n_derivatives = n_derivates
+        self.vertical_lines = []
 
         try:
             tm = self.figure.canvas.manager.toolmanager
@@ -75,6 +76,9 @@ class Plotter:
                 self.plot.plot(
                     xs[nth + 1 :], derivatives[nth], label=label + "_prime" * (nth + 1)
                 )
+
+        for x, color in self.vertical_lines:
+            self._render_vertical_line(x, color)
 
         # Format plot
         plt.xticks(rotation=45, ha="right")
@@ -104,4 +108,7 @@ class Plotter:
         resume()
 
     def draw_vertical_line(self, x, color="red"):
+        self.vertical_lines.append((x, color))
+
+    def _render_vertical_line(self, x, color="red"):
         self.plot.vlines(x=x, ymin=-50, ymax=50, colors=color)

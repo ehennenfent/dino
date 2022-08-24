@@ -3,3 +3,5 @@ TODO
  - [ ] Pattern Matcher / State Machine needs to be able to account for steady (empty) vs steady (under load)
  - [ ] Automatically re-tare the microcontroller when powered on
  - [ ] Use kinematics equations to estimate position?
+ - [ ] Fix buffered integrals not getting cleared when buffered force does
+ - [ ] Implement jump detection
