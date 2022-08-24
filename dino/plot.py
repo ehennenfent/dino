@@ -1,28 +1,35 @@
+import platform
 import typing as t
 from collections import deque
 
 import matplotlib
+import matplotlib.animation as animation
+import matplotlib.pyplot as plt
+from matplotlib.backend_tools import ToolToggleBase
 from numpy import diff
 
 from dino.buffer import BUFFER_MINUTES
 from dino.openscale_serial.openscale_reader import SAMPLES_PER_SEC
 
-matplotlib.rcParams["toolbar"] = "toolmanager"
-from matplotlib.backend_tools import ToolToggleBase
-import matplotlib.animation as animation
-import matplotlib.pyplot as plt
+if platform.system().lower() == "windows":
+    matplotlib.rcParams["toolbar"] = "toolmanager"
 
 # Look, I don't like having this global either, but if matplotlib is going to do everything as singletons,
 # I guess I will too
 ANIMATION = None
+paused = False
 
 
 def pause():
+    global paused
+    paused = True
     if ANIMATION is not None:
         ANIMATION.pause()
 
 
 def resume():
+    global paused
+    paused = False
     if ANIMATION is not None:
         ANIMATION.resume()
 
@@ -44,6 +51,14 @@ class PauseTool(ToolToggleBase):
         resume()
 
 
+def on_press(event):
+    if event.key == " ":
+        if not paused:
+            pause()
+        else:
+            resume()
+
+
 class Plotter:
     def __init__(self, n_derivates=1):
         self.figure = plt.figure()
@@ -52,14 +67,17 @@ class Plotter:
         self.n_derivatives = n_derivates
         self.vertical_lines = []
 
-        try:
-            tm = self.figure.canvas.manager.toolmanager
-            self.figure.canvas.manager.toolmanager.add_tool("Pause", PauseTool)
-            self.figure.canvas.manager.toolbar.add_tool(
-                tm.get_tool("Pause"), "toolgroup"
-            )
-        except AttributeError:
-            print("Toolbar modification not supported on this platform")
+        if platform.system().lower() == "windows":
+            try:
+                tm = self.figure.canvas.manager.toolmanager
+                self.figure.canvas.manager.toolmanager.add_tool("Pause", PauseTool)
+                self.figure.canvas.manager.toolbar.add_tool(
+                    tm.get_tool("Pause"), "toolgroup"
+                )
+            except AttributeError:
+                print("Toolbar modification not supported on this platform")
+        elif platform.system().lower() == "darwin":
+            self.figure.canvas.mpl_connect("key_press_event", on_press)
 
     def _draw(self, _i):
         """Called once per interval to update the displayed graph"""
