@@ -11,7 +11,7 @@ from numpy import diff
 from dino.buffer import BUFFER_MINUTES
 from dino.openscale_serial.openscale_reader import SAMPLES_PER_SEC
 
-if platform.system().lower() == "windows":
+if (platform_name := platform.system().lower()) == "windows":
     matplotlib.rcParams["toolbar"] = "toolmanager"
 
 # Look, I don't like having this global either, but if matplotlib is going to do everything as singletons,
@@ -67,7 +67,7 @@ class Plotter:
         self.n_derivatives = n_derivates
         self.vertical_lines = []
 
-        if platform.system().lower() == "windows":
+        if platform_name == "windows":
             try:
                 tm = self.figure.canvas.manager.toolmanager
                 self.figure.canvas.manager.toolmanager.add_tool("Pause", PauseTool)
@@ -76,7 +76,7 @@ class Plotter:
                 )
             except AttributeError:
                 print("Toolbar modification not supported on this platform")
-        elif platform.system().lower() == "darwin":
+        elif platform_name == "darwin":
             self.figure.canvas.mpl_connect("key_press_event", on_press)
 
     def _draw(self, _i):
