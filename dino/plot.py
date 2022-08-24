@@ -2,15 +2,15 @@ import typing as t
 from collections import deque
 
 import matplotlib
+from numpy import diff
+
+from dino.buffer import BUFFER_MINUTES
+from dino.openscale_serial.openscale_reader import SAMPLES_PER_SEC
 
 matplotlib.rcParams["toolbar"] = "toolmanager"
 from matplotlib.backend_tools import ToolToggleBase
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
-from numpy import diff
-
-from dino.buffer import BUFFER_MINUTES
-from dino.openscale_serial.openscale_reader import SAMPLES_PER_SEC
 
 # Look, I don't like having this global either, but if matplotlib is going to do everything as singletons,
 # I guess I will too
@@ -101,10 +101,12 @@ class Plotter:
     def stop(self):
         plt.close(self.figure)
 
-    def pause(self, _event):
+    @staticmethod
+    def pause(_event):
         pause()
 
-    def resume(self, _event):
+    @staticmethod
+    def resume(_event):
         resume()
 
     def draw_vertical_line(self, x, color="red"):

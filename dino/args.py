@@ -1,5 +1,4 @@
 import argparse
-from functools import reduce
 
 from dino.openscale_serial.openscale_reader import DEFAULT_PORT, DEFAULT_BAUD
 
@@ -76,7 +75,7 @@ def collect_args():
         "plot", help="Plot live readings from the openscale"
     )
 
-    plot_parser = collect_serial_args(collect_plot_args(plot_parser))
-    simulate_parser = collect_simulate_args(collect_plot_args(simulate_parser))
+    _plot_parser = collect_serial_args(collect_plot_args(plot_parser))
+    _simulate_parser = collect_simulate_args(collect_plot_args(simulate_parser))
 
     return parser.parse_args()

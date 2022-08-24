@@ -6,8 +6,8 @@ from operator import gt, lt
 from dino.util import extract_tail
 
 
-def get_second(l: list):
-    return [i[1] for i in l]
+def get_second(ls: list):
+    return [i[1] for i in ls]
 
 
 @dataclass
