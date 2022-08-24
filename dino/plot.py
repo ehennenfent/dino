@@ -51,9 +51,14 @@ class Plotter:
         self.series: t.Dict[str, t.Deque[t.Tuple]] = {}
         self.n_derivatives = n_derivates
 
-        tm = self.figure.canvas.manager.toolmanager
-        self.figure.canvas.manager.toolmanager.add_tool("Pause", PauseTool)
-        self.figure.canvas.manager.toolbar.add_tool(tm.get_tool("Pause"), "toolgroup")
+        try:
+            tm = self.figure.canvas.manager.toolmanager
+            self.figure.canvas.manager.toolmanager.add_tool("Pause", PauseTool)
+            self.figure.canvas.manager.toolbar.add_tool(
+                tm.get_tool("Pause"), "toolgroup"
+            )
+        except AttributeError:
+            print("Toolbar modification not supported on this platform")
 
     def _draw(self, _i):
         """Called once per interval to update the displayed graph"""

@@ -14,8 +14,7 @@ setup(
     url="https://github.com/ehennenfent/dino",
     author="Eric Hennenfent",
     author_email="eric@hennenfent.com",
-    package_dir={"": "dino"},
-    packages=find_packages(where="src"),
+    packages=find_packages(),
     python_requires=">=3.9, <4",
     install_requires=["matplotlib", "numpy", "pyserial"],
     entry_points={
