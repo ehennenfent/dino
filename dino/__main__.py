@@ -31,7 +31,7 @@ def main():
     args = collect_args()
 
     # Create a matplotlib window to view the animated data
-    plotter = Plotter(n_derivates=0)
+    plotter = Plotter(n_derivates=args.n_derivatives)
 
     # Make a state machine to keep track of what part of a jump we're in
     state_machine = DinoStateMachine()
@@ -69,19 +69,21 @@ def main():
         )
     )
 
-    physics.velocity.register_callback(
-        partial(
-            Buffer.call_with_last_item,
-            plotter.get_differentiable_series("Velocity").append,
+    if args.n_integrals >= 1:
+        physics.velocity.register_callback(
+            partial(
+                Buffer.call_with_last_item,
+                plotter.get_differentiable_series("Velocity").append,
+            )
         )
-    )
 
-    # physics.position.register_callback(
-    #     partial(
-    #         Buffer.call_with_last_item,
-    #         plotter.get_differentiable_series("Position").append,
-    #     )
-    # )
+    if args.n_integrals >= 2:
+        physics.position.register_callback(
+            partial(
+                Buffer.call_with_last_item,
+                plotter.get_differentiable_series("Position").append,
+            )
+        )
 
     # Attempt to pattern match on incoming data
     buffer.register_callback(partial(Buffer.call_with_underlying, force_matcher.match))

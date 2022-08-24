@@ -1,4 +1,5 @@
 import argparse
+from functools import reduce
 
 from dino.openscale_serial.openscale_reader import DEFAULT_PORT, DEFAULT_BAUD
 
@@ -42,6 +43,28 @@ def collect_simulate_args(parser):
     return parser
 
 
+def collect_plot_args(parser):
+    parser.add_argument(
+        "-d",
+        "--n_derivatives",
+        type=int,
+        action="store",
+        default=0,
+        help="Number of derivatives to show on the plot",
+    )
+
+    parser.add_argument(
+        "-i",
+        "--n_integrals",
+        type=int,
+        action="store",
+        default=1,
+        help="Number of integrals to show on the plot",
+    )
+
+    return parser
+
+
 def collect_args():
     parser = argparse.ArgumentParser(description="Run the openscale tooling")
     operations = parser.add_subparsers(title="commands", dest="command", required=True)
@@ -53,7 +76,7 @@ def collect_args():
         "plot", help="Plot live readings from the openscale"
     )
 
-    plot_parser = collect_serial_args(plot_parser)
-    simulate_parser = collect_simulate_args(simulate_parser)
+    plot_parser = collect_serial_args(collect_plot_args(plot_parser))
+    simulate_parser = collect_simulate_args(collect_plot_args(simulate_parser))
 
     return parser.parse_args()
