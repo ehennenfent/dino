@@ -2,10 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 // extract from chromium source code by @liuwayong
-
+// adapted for Tauri by @ehennenfent
 (() => {
     'use strict';
-
     /**
      * T-Rex runner.
      * @param {string} outerContainerId Outer containing element id.
@@ -511,7 +510,6 @@
          * @param {Event} e
          */
         onKeyDown(e) {
-            console.log(e)
             // Prevent native page scrolling whilst tapping on mobile.
             if (IS_MOBILE && this.playing) {
                 e.preventDefault();
@@ -754,7 +752,6 @@
     }
 
     window['Runner'] = Runner;
-
 
     /**
      * Default game width.
@@ -2735,6 +2732,14 @@
 function onDocumentLoad() {
     console.log("Loaded!");
     new Runner('.interstitial-wrapper');
+
+    const { emit, listen } = window.__TAURI__.event;
+
+    console.log("here");
+    listen("jump", _ev => {
+        console.log("everywhere!");
+    });
+    console.log("there");
 }
 
 document.addEventListener('DOMContentLoaded', onDocumentLoad);

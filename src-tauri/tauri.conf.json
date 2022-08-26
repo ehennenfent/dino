@@ -3,7 +3,8 @@
     "beforeBuildCommand": "",
     "beforeDevCommand": "",
     "devPath": "../web",
-    "distDir": "../web"
+    "distDir": "../web",
+    "withGlobalTauri": true
   },
   "package": {
     "productName": "The Raptor Jumps",

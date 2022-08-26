@@ -32,13 +32,12 @@
 </body>
 
 <script>
-    document.onkeydown = function(evt) {
-    evt = evt || window.event;
-    if (evt.keyCode == 32) {
-        var box = document.getElementById("messageBox");
-        box.style.visibility="hidden";
-    }
-};
+    document.addEventListener("keydown", (evt) => {
+        if (evt.key === " ") {
+            var box = document.getElementById("messageBox");
+            box.style.visibility="hidden";
+        }
+    });
 </script>
 
 </html>
