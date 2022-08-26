@@ -5,6 +5,7 @@
 
 (() => {
     'use strict';
+
     /**
      * T-Rex runner.
      * @param {string} outerContainerId Outer containing element id.
@@ -12,66 +13,749 @@
      * @constructor
      * @export
      */
-    function Runner(outerContainerId, opt_config) {
-        // Singleton
-        if (Runner.instance_) {
-            return Runner.instance_;
+    class Runner {
+        constructor(outerContainerId, opt_config) {
+            // Singleton
+            if (Runner.instance_) {
+                return Runner.instance_;
+            }
+            Runner.instance_ = this;
+
+            this.outerContainerEl = document.querySelector(outerContainerId);
+            this.containerEl = null;
+            this.snackbarEl = null;
+            this.detailsButton = this.outerContainerEl.querySelector('#details-button');
+
+            this.config = opt_config || Runner.config;
+
+            this.dimensions = Runner.defaultDimensions;
+
+            this.canvas = null;
+            this.canvasCtx = null;
+
+            this.tRex = null;
+
+            this.distanceMeter = null;
+            this.distanceRan = 0;
+
+            this.highestScore = 0;
+
+            this.time = 0;
+            this.runningTime = 0;
+            this.msPerFrame = 1000 / FPS;
+            this.currentSpeed = this.config.SPEED;
+
+            this.obstacles = [];
+
+            this.activated = false; // Whether the easter egg has been activated.
+            this.playing = false; // Whether the game is currently in play state.
+            this.crashed = false;
+            this.paused = false;
+            this.inverted = false;
+            this.invertTimer = 0;
+            this.resizeTimerId_ = null;
+
+            this.playCount = 0;
+
+            // Sound FX.
+            this.audioBuffer = null;
+            this.soundFx = {};
+
+            // Global web audio context for playing sounds.
+            this.audioContext = null;
+
+            // Images.
+            this.images = {};
+            this.imagesLoaded = 0;
+
+            if (this.isDisabled()) {
+                this.setupDisabledRunner();
+            } else {
+                this.loadImages();
+            }
         }
-        Runner.instance_ = this;
 
-        this.outerContainerEl = document.querySelector(outerContainerId);
-        this.containerEl = null;
-        this.snackbarEl = null;
-        this.detailsButton = this.outerContainerEl.querySelector('#details-button');
+        /**
+         * Whether the easter egg has been disabled. CrOS enterprise enrolled devices.
+         * @return {boolean}
+         */
+        isDisabled() {
+            // return loadTimeData && loadTimeData.valueExists('disabledEasterEgg');
+            return false;
+        }
 
-        this.config = opt_config || Runner.config;
+        /**
+         * For disabled instances, set up a snackbar with the disabled message.
+         */
+        setupDisabledRunner() {
+            this.containerEl = document.createElement('div');
+            this.containerEl.className = Runner.classes.SNACKBAR;
+            this.containerEl.textContent = loadTimeData.getValue('disabledEasterEgg');
+            this.outerContainerEl.appendChild(this.containerEl);
 
-        this.dimensions = Runner.defaultDimensions;
+            // Show notification when the activation key is pressed.
+            document.addEventListener(Runner.events.KEYDOWN, e => {
+                if (Runner.keycodes.JUMP[e.keyCode]) {
+                    this.containerEl.classList.add(Runner.classes.SNACKBAR_SHOW);
+                    document.querySelector('.icon').classList.add('icon-disabled');
+                }
+            });
+        }
 
-        this.canvas = null;
-        this.canvasCtx = null;
+        /**
+         * Setting individual settings for debugging.
+         * @param {string} setting
+         * @param {*} value
+         */
+        updateConfigSetting(setting, value) {
+            if (setting in this.config && value != undefined) {
+                this.config[setting] = value;
 
-        this.tRex = null;
+                switch (setting) {
+                    case 'GRAVITY':
+                    case 'MIN_JUMP_HEIGHT':
+                    case 'SPEED_DROP_COEFFICIENT':
+                        this.tRex.config[setting] = value;
+                        break;
+                    case 'INITIAL_JUMP_VELOCITY':
+                        this.tRex.setJumpVelocity(value);
+                        break;
+                    case 'SPEED':
+                        this.setSpeed(value);
+                        break;
+                }
+            }
+        }
 
-        this.distanceMeter = null;
-        this.distanceRan = 0;
+        /**
+         * Cache the appropriate image sprite from the page and get the sprite sheet
+         * definition.
+         */
+        loadImages() {
+            if (IS_HIDPI) {
+                Runner.imageSprite = document.getElementById('offline-resources-2x');
+                this.spriteDef = Runner.spriteDefinition.HDPI;
+            } else {
+                Runner.imageSprite = document.getElementById('offline-resources-1x');
+                this.spriteDef = Runner.spriteDefinition.LDPI;
+            }
 
-        this.highestScore = 0;
+            if (Runner.imageSprite.complete) {
+                this.init();
+            } else {
+                // If the images are not yet loaded, add a listener.
+                Runner.imageSprite.addEventListener(Runner.events.LOAD,
+                    this.init.bind(this));
+            }
+        }
 
-        this.time = 0;
-        this.runningTime = 0;
-        this.msPerFrame = 1000 / FPS;
-        this.currentSpeed = this.config.SPEED;
+        /**
+         * Load and decode base 64 encoded sounds.
+         */
+        loadSounds() {
+            if (!IS_IOS) {
+                this.audioContext = new AudioContext();
 
-        this.obstacles = [];
+                var resourceTemplate =
+                    document.getElementById(this.config.RESOURCE_TEMPLATE_ID).content;
 
-        this.activated = false; // Whether the easter egg has been activated.
-        this.playing = false; // Whether the game is currently in play state.
-        this.crashed = false;
-        this.paused = false;
-        this.inverted = false;
-        this.invertTimer = 0;
-        this.resizeTimerId_ = null;
+                for (var sound in Runner.sounds) {
+                    var soundSrc =
+                        resourceTemplate.getElementById(Runner.sounds[sound]).src;
+                    soundSrc = soundSrc.substr(soundSrc.indexOf(',') + 1);
+                    var buffer = decodeBase64ToArrayBuffer(soundSrc);
 
-        this.playCount = 0;
+                    // Async, so no guarantee of order in array.
+                    this.audioContext.decodeAudioData(buffer, function (index, audioData) {
+                        this.soundFx[index] = audioData;
+                    }.bind(this, sound));
+                }
+            }
+        }
 
-        // Sound FX.
-        this.audioBuffer = null;
-        this.soundFx = {};
+        /**
+         * Sets the game speed. Adjust the speed accordingly if on a smaller screen.
+         * @param {number} opt_speed
+         */
+        setSpeed(opt_speed) {
+            var speed = opt_speed || this.currentSpeed;
 
-        // Global web audio context for playing sounds.
-        this.audioContext = null;
+            // Reduce the speed on smaller mobile screens.
+            if (this.dimensions.WIDTH < DEFAULT_WIDTH) {
+                var mobileSpeed = speed * this.dimensions.WIDTH / DEFAULT_WIDTH *
+                    this.config.MOBILE_SPEED_COEFFICIENT;
+                this.currentSpeed = mobileSpeed > speed ? speed : mobileSpeed;
+            } else if (opt_speed) {
+                this.currentSpeed = opt_speed;
+            }
+        }
 
-        // Images.
-        this.images = {};
-        this.imagesLoaded = 0;
+        /**
+         * Game initialiser.
+         */
+        init() {
+            // Hide the static icon.
+            document.querySelector('.' + Runner.classes.ICON).style.visibility =
+                'hidden';
 
-        if (this.isDisabled()) {
-            this.setupDisabledRunner();
-        } else {
-            this.loadImages();
+            this.adjustDimensions();
+            this.setSpeed();
+
+            this.containerEl = document.createElement('div');
+            this.containerEl.className = Runner.classes.CONTAINER;
+
+            // Player canvas container.
+            this.canvas = createCanvas(this.containerEl, this.dimensions.WIDTH,
+                this.dimensions.HEIGHT, Runner.classes.PLAYER);
+
+            this.canvasCtx = this.canvas.getContext('2d');
+            this.canvasCtx.fillStyle = '#f7f7f7';
+            this.canvasCtx.fill();
+            Runner.updateCanvasScaling(this.canvas);
+
+            // Horizon contains clouds, obstacles and the ground.
+            this.horizon = new Horizon(this.canvas, this.spriteDef, this.dimensions,
+                this.config.GAP_COEFFICIENT);
+
+            // Distance meter
+            this.distanceMeter = new DistanceMeter(this.canvas,
+                this.spriteDef.TEXT_SPRITE, this.dimensions.WIDTH);
+
+            // Draw t-rex
+            this.tRex = new Trex(this.canvas, this.spriteDef.TREX);
+
+            this.outerContainerEl.appendChild(this.containerEl);
+
+            if (IS_MOBILE) {
+                this.createTouchController();
+            }
+
+            this.startListening();
+            this.update();
+
+            window.addEventListener(Runner.events.RESIZE,
+                this.debounceResize.bind(this));
+        }
+
+        /**
+         * Create the touch controller. A div that covers whole screen.
+         */
+        createTouchController() {
+            this.touchController = document.createElement('div');
+            this.touchController.className = Runner.classes.TOUCH_CONTROLLER;
+            this.outerContainerEl.appendChild(this.touchController);
+        }
+
+        /**
+         * Debounce the resize event.
+         */
+        debounceResize() {
+            if (!this.resizeTimerId_) {
+                this.resizeTimerId_ =
+                    setInterval(this.adjustDimensions.bind(this), 250);
+            }
+        }
+
+        /**
+         * Adjust game space dimensions on resize.
+         */
+        adjustDimensions() {
+            clearInterval(this.resizeTimerId_);
+            this.resizeTimerId_ = null;
+
+            var boxStyles = window.getComputedStyle(this.outerContainerEl);
+            var padding = Number(boxStyles.paddingLeft.substr(0,
+                boxStyles.paddingLeft.length - 2));
+
+            this.dimensions.WIDTH = this.outerContainerEl.offsetWidth - padding * 2;
+            this.dimensions.WIDTH = Math.min(DEFAULT_WIDTH, this.dimensions.WIDTH); //Arcade Mode
+            if (this.activated) {
+                this.setArcadeModeContainerScale();
+            }
+
+            // Redraw the elements back onto the canvas.
+            if (this.canvas) {
+                this.canvas.width = this.dimensions.WIDTH;
+                this.canvas.height = this.dimensions.HEIGHT;
+
+                Runner.updateCanvasScaling(this.canvas);
+
+                this.distanceMeter.calcXPos(this.dimensions.WIDTH);
+                this.clearCanvas();
+                this.horizon.update(0, 0, true);
+                this.tRex.update(0);
+
+                // Outer container and distance meter.
+                if (this.playing || this.crashed || this.paused) {
+                    this.containerEl.style.width = this.dimensions.WIDTH + 'px';
+                    this.containerEl.style.height = this.dimensions.HEIGHT + 'px';
+                    this.distanceMeter.update(0, Math.ceil(this.distanceRan));
+                    this.stop();
+                } else {
+                    this.tRex.draw(0, 0);
+                }
+
+                // Game over panel.
+                if (this.crashed && this.gameOverPanel) {
+                    this.gameOverPanel.updateDimensions(this.dimensions.WIDTH);
+                    this.gameOverPanel.draw();
+                }
+            }
+        }
+
+        /**
+         * Play the game intro.
+         * Canvas container width expands out to the full width.
+         */
+        playIntro() {
+            if (!this.activated && !this.crashed) {
+                this.playingIntro = true;
+                this.tRex.playingIntro = true;
+
+                // CSS animation definition.
+                var keyframes = '@-webkit-keyframes intro { ' +
+                    'from { width:' + Trex.config.WIDTH + 'px }' +
+                    'to { width: ' + this.dimensions.WIDTH + 'px }' +
+                    '}';
+
+                // create a style sheet to put the keyframe rule in
+                // and then place the style sheet in the html head
+                var sheet = document.createElement('style');
+                sheet.innerHTML = keyframes;
+                document.head.appendChild(sheet);
+
+                this.containerEl.addEventListener(Runner.events.ANIM_END,
+                    this.startGame.bind(this));
+
+                this.containerEl.style.webkitAnimation = 'intro .4s ease-out 1 both';
+                this.containerEl.style.width = this.dimensions.WIDTH + 'px';
+
+                // if (this.touchController) {
+                //     this.outerContainerEl.appendChild(this.touchController);
+                // }
+                this.playing = true;
+                this.activated = true;
+            } else if (this.crashed) {
+                this.restart();
+            }
+        }
+
+        /**
+         * Update the game status to started.
+         */
+        startGame() {
+            this.setArcadeMode();
+            this.runningTime = 0;
+            this.playingIntro = false;
+            this.tRex.playingIntro = false;
+            this.containerEl.style.webkitAnimation = '';
+            this.playCount++;
+
+            // Handle tabbing off the page. Pause the current game.
+            document.addEventListener(Runner.events.VISIBILITY,
+                this.onVisibilityChange.bind(this));
+
+            window.addEventListener(Runner.events.BLUR,
+                this.onVisibilityChange.bind(this));
+
+            window.addEventListener(Runner.events.FOCUS,
+                this.onVisibilityChange.bind(this));
+        }
+
+        clearCanvas() {
+            this.canvasCtx.clearRect(0, 0, this.dimensions.WIDTH,
+                this.dimensions.HEIGHT);
+        }
+
+        /**
+         * Update the game frame and schedules the next one.
+         */
+        update() {
+            this.updatePending = false;
+
+            var now = getTimeStamp();
+            var deltaTime = now - (this.time || now);
+            this.time = now;
+
+            if (this.playing) {
+                this.clearCanvas();
+
+                if (this.tRex.jumping) {
+                    this.tRex.updateJump(deltaTime);
+                }
+
+                this.runningTime += deltaTime;
+                var hasObstacles = this.runningTime > this.config.CLEAR_TIME;
+
+                // First jump triggers the intro.
+                if (this.tRex.jumpCount == 1 && !this.playingIntro) {
+                    this.playIntro();
+                }
+
+                // The horizon doesn't move until the intro is over.
+                if (this.playingIntro) {
+                    this.horizon.update(0, this.currentSpeed, hasObstacles);
+                } else {
+                    deltaTime = !this.activated ? 0 : deltaTime;
+                    this.horizon.update(deltaTime, this.currentSpeed, hasObstacles,
+                        this.inverted);
+                }
+
+                // Check for collisions.
+                var collision = hasObstacles &&
+                    checkForCollision(this.horizon.obstacles[0], this.tRex);
+
+                if (!collision) {
+                    this.distanceRan += this.currentSpeed * deltaTime / this.msPerFrame;
+
+                    if (this.currentSpeed < this.config.MAX_SPEED) {
+                        this.currentSpeed += this.config.ACCELERATION;
+                    }
+                } else {
+                    this.gameOver();
+                }
+
+                var playAchievementSound = this.distanceMeter.update(deltaTime,
+                    Math.ceil(this.distanceRan));
+
+                if (playAchievementSound) {
+                    this.playSound(this.soundFx.SCORE);
+                }
+
+                // Night mode.
+                if (this.invertTimer > this.config.INVERT_FADE_DURATION) {
+                    this.invertTimer = 0;
+                    this.invertTrigger = false;
+                    this.invert();
+                } else if (this.invertTimer) {
+                    this.invertTimer += deltaTime;
+                } else {
+                    var actualDistance =
+                        this.distanceMeter.getActualDistance(Math.ceil(this.distanceRan));
+
+                    if (actualDistance > 0) {
+                        this.invertTrigger = !(actualDistance %
+                            this.config.INVERT_DISTANCE);
+
+                        if (this.invertTrigger && this.invertTimer === 0) {
+                            this.invertTimer += deltaTime;
+                            this.invert();
+                        }
+                    }
+                }
+            }
+
+            if (this.playing || (!this.activated &&
+                this.tRex.blinkCount < Runner.config.MAX_BLINK_COUNT)) {
+                this.tRex.update(deltaTime);
+                this.scheduleNextUpdate();
+            }
+        }
+
+        /**
+         * Event handler.
+         */
+        handleEvent(e) {
+            return (((evtType, events) => {
+                switch (evtType) {
+                    case events.KEYDOWN:
+                    case events.TOUCHSTART:
+                    case events.MOUSEDOWN:
+                        this.onKeyDown(e);
+                        break;
+                    case events.KEYUP:
+                    case events.TOUCHEND:
+                    case events.MOUSEUP:
+                        this.onKeyUp(e);
+                        break;
+                }
+            }))(e.type, Runner.events);
+        }
+
+        /**
+         * Bind relevant key / mouse / touch listeners.
+         */
+        startListening() {
+            // Keys.
+            document.addEventListener(Runner.events.KEYDOWN, this);
+            document.addEventListener(Runner.events.KEYUP, this);
+
+            if (IS_MOBILE) {
+                // Mobile only touch devices.
+                this.touchController.addEventListener(Runner.events.TOUCHSTART, this);
+                this.touchController.addEventListener(Runner.events.TOUCHEND, this);
+                this.containerEl.addEventListener(Runner.events.TOUCHSTART, this);
+            } else {
+                // Mouse.
+                document.addEventListener(Runner.events.MOUSEDOWN, this);
+                document.addEventListener(Runner.events.MOUSEUP, this);
+            }
+        }
+
+        /**
+         * Remove all listeners.
+         */
+        stopListening() {
+            document.removeEventListener(Runner.events.KEYDOWN, this);
+            document.removeEventListener(Runner.events.KEYUP, this);
+
+            if (IS_MOBILE) {
+                this.touchController.removeEventListener(Runner.events.TOUCHSTART, this);
+                this.touchController.removeEventListener(Runner.events.TOUCHEND, this);
+                this.containerEl.removeEventListener(Runner.events.TOUCHSTART, this);
+            } else {
+                document.removeEventListener(Runner.events.MOUSEDOWN, this);
+                document.removeEventListener(Runner.events.MOUSEUP, this);
+            }
+        }
+
+        /**
+         * Process keydown.
+         * @param {Event} e
+         */
+        onKeyDown(e) {
+            console.log(e)
+            // Prevent native page scrolling whilst tapping on mobile.
+            if (IS_MOBILE && this.playing) {
+                e.preventDefault();
+            }
+
+            if (e.target != this.detailsButton) {
+                if (!this.crashed && (Runner.keycodes.JUMP[e.keyCode] ||
+                    e.type == Runner.events.TOUCHSTART)) {
+                    if (!this.playing) {
+                        // this.loadSounds();
+                        this.playing = true;
+                        this.update();
+                        if (window.errorPageController) {
+                            errorPageController.trackEasterEgg();
+                        }
+                    }
+                    //  Play sound effect and jump on starting the game for the first time.
+                    if (!this.tRex.jumping && !this.tRex.ducking) {
+                        this.playSound(this.soundFx.BUTTON_PRESS);
+                        this.tRex.startJump(this.currentSpeed);
+                    }
+                }
+
+                if (this.crashed && e.type == Runner.events.TOUCHSTART &&
+                    e.currentTarget == this.containerEl) {
+                    this.restart();
+                }
+            }
+
+            if (this.playing && !this.crashed && Runner.keycodes.DUCK[e.keyCode]) {
+                e.preventDefault();
+                if (this.tRex.jumping) {
+                    // Speed drop, activated only when jump key is not pressed.
+                    this.tRex.setSpeedDrop();
+                } else if (!this.tRex.jumping && !this.tRex.ducking) {
+                    // Duck.
+                    this.tRex.setDuck(true);
+                }
+            }
+        }
+
+        /**
+         * Process key up.
+         * @param {Event} e
+         */
+        onKeyUp(e) {
+            var keyCode = String(e.keyCode);
+            var isjumpKey = Runner.keycodes.JUMP[keyCode] ||
+                e.type == Runner.events.TOUCHEND ||
+                e.type == Runner.events.MOUSEDOWN;
+
+            if (this.isRunning() && isjumpKey) {
+                this.tRex.endJump();
+            } else if (Runner.keycodes.DUCK[keyCode]) {
+                this.tRex.speedDrop = false;
+                this.tRex.setDuck(false);
+            } else if (this.crashed) {
+                // Check that enough time has elapsed before allowing jump key to restart.
+                var deltaTime = getTimeStamp() - this.time;
+
+                if (Runner.keycodes.RESTART[keyCode] || this.isLeftClickOnCanvas(e) ||
+                    (deltaTime >= this.config.GAMEOVER_CLEAR_TIME &&
+                        Runner.keycodes.JUMP[keyCode])) {
+                    this.restart();
+                }
+            } else if (this.paused && isjumpKey) {
+                // Reset the jump state
+                this.tRex.reset();
+                this.play();
+            }
+        }
+
+        /**
+         * Returns whether the event was a left click on canvas.
+         * On Windows right click is registered as a click.
+         * @param {Event} e
+         * @return {boolean}
+         */
+        isLeftClickOnCanvas(e) {
+            return e.button != null && e.button < 2 &&
+                e.type == Runner.events.MOUSEUP && e.target == this.canvas;
+        }
+
+        /**
+         * RequestAnimationFrame wrapper.
+         */
+        scheduleNextUpdate() {
+            if (!this.updatePending) {
+                this.updatePending = true;
+                this.raqId = requestAnimationFrame(this.update.bind(this));
+            }
+        }
+
+        /**
+         * Whether the game is running.
+         * @return {boolean}
+         */
+        isRunning() {
+            return !!this.raqId;
+        }
+
+        /**
+         * Game over state.
+         */
+        gameOver() {
+            this.playSound(this.soundFx.HIT);
+            vibrate(200);
+
+            this.stop();
+            this.crashed = true;
+            this.distanceMeter.acheivement = false;
+
+            this.tRex.update(100, Trex.status.CRASHED);
+
+            // Game over panel.
+            if (!this.gameOverPanel) {
+                this.gameOverPanel = new GameOverPanel(this.canvas,
+                    this.spriteDef.TEXT_SPRITE, this.spriteDef.RESTART,
+                    this.dimensions);
+            } else {
+                this.gameOverPanel.draw();
+            }
+
+            // Update the high score.
+            if (this.distanceRan > this.highestScore) {
+                this.highestScore = Math.ceil(this.distanceRan);
+                this.distanceMeter.setHighScore(this.highestScore);
+            }
+
+            // Reset the time clock.
+            this.time = getTimeStamp();
+        }
+
+        stop() {
+            this.playing = false;
+            this.paused = true;
+            cancelAnimationFrame(this.raqId);
+            this.raqId = 0;
+        }
+
+        play() {
+            if (!this.crashed) {
+                this.playing = true;
+                this.paused = false;
+                this.tRex.update(0, Trex.status.RUNNING);
+                this.time = getTimeStamp();
+                this.update();
+            }
+        }
+
+        restart() {
+            if (!this.raqId) {
+                this.playCount++;
+                this.runningTime = 0;
+                this.playing = true;
+                this.crashed = false;
+                this.distanceRan = 0;
+                this.setSpeed(this.config.SPEED);
+                this.time = getTimeStamp();
+                this.containerEl.classList.remove(Runner.classes.CRASHED);
+                this.clearCanvas();
+                this.distanceMeter.reset(this.highestScore);
+                this.horizon.reset();
+                this.tRex.reset();
+                this.playSound(this.soundFx.BUTTON_PRESS);
+                this.invert(true);
+                this.update();
+            }
+        }
+
+        /**
+         * Hides offline messaging for a fullscreen game only experience.
+         */
+        setArcadeMode() {
+            document.body.classList.add(Runner.classes.ARCADE_MODE);
+            this.setArcadeModeContainerScale();
+        }
+
+        /**
+         * Sets the scaling for arcade mode.
+         */
+        setArcadeModeContainerScale() {
+            const windowHeight = window.innerHeight;
+            const scaleHeight = windowHeight / this.dimensions.HEIGHT;
+            const scaleWidth = window.innerWidth / this.dimensions.WIDTH;
+            const scale = Math.max(1, Math.min(scaleHeight, scaleWidth));
+            const scaledCanvasHeight = this.dimensions.HEIGHT * scale;
+            // Positions the game container at 10% of the available vertical window
+            // height minus the game container height.
+            const translateY = Math.ceil(Math.max(0, (windowHeight - scaledCanvasHeight -
+                                                      Runner.config.ARCADE_MODE_INITIAL_TOP_POSITION) *
+                                                  Runner.config.ARCADE_MODE_TOP_POSITION_PERCENT)) *
+                  window.devicePixelRatio;
+
+            const cssScale = scale;
+            this.containerEl.style.transform =
+                'scale(' + cssScale + ') translateY(' + translateY + 'px)';
+        }
+
+        /**
+         * Pause the game if the tab is not in focus.
+         */
+        onVisibilityChange(e) {
+            if (document.hidden || document.webkitHidden || e.type == 'blur' ||
+                document.visibilityState != 'visible') {
+                this.stop();
+            } else if (!this.crashed) {
+                this.tRex.reset();
+                this.play();
+            }
+        }
+
+        /**
+         * Play a sound.
+         * @param {SoundBuffer} soundBuffer
+         */
+        playSound(soundBuffer) {
+            if (soundBuffer) {
+                var sourceNode = this.audioContext.createBufferSource();
+                sourceNode.buffer = soundBuffer;
+                sourceNode.connect(this.audioContext.destination);
+                sourceNode.start(0);
+            }
+        }
+
+        /**
+         * Inverts the current page / canvas colors.
+         * @param {boolean} Whether to reset colors.
+         */
+        invert(reset) {
+            if (reset) {
+                document.body.classList.toggle(Runner.classes.INVERTED, false);
+                this.invertTimer = 0;
+                this.inverted = false;
+            } else {
+                this.inverted = document.body.classList.toggle(Runner.classes.INVERTED,
+                    this.invertTrigger);
+            }
         }
     }
+
     window['Runner'] = Runner;
 
 
@@ -232,691 +916,6 @@
     };
 
 
-    Runner.prototype = {
-        /**
-         * Whether the easter egg has been disabled. CrOS enterprise enrolled devices.
-         * @return {boolean}
-         */
-        isDisabled() {
-            // return loadTimeData && loadTimeData.valueExists('disabledEasterEgg');
-            return false;
-        },
-
-        /**
-         * For disabled instances, set up a snackbar with the disabled message.
-         */
-        setupDisabledRunner() {
-            this.containerEl = document.createElement('div');
-            this.containerEl.className = Runner.classes.SNACKBAR;
-            this.containerEl.textContent = loadTimeData.getValue('disabledEasterEgg');
-            this.outerContainerEl.appendChild(this.containerEl);
-
-            // Show notification when the activation key is pressed.
-            document.addEventListener(Runner.events.KEYDOWN, e => {
-                if (Runner.keycodes.JUMP[e.keyCode]) {
-                    this.containerEl.classList.add(Runner.classes.SNACKBAR_SHOW);
-                    document.querySelector('.icon').classList.add('icon-disabled');
-                }
-            });
-        },
-
-        /**
-         * Setting individual settings for debugging.
-         * @param {string} setting
-         * @param {*} value
-         */
-        updateConfigSetting(setting, value) {
-            if (setting in this.config && value != undefined) {
-                this.config[setting] = value;
-
-                switch (setting) {
-                    case 'GRAVITY':
-                    case 'MIN_JUMP_HEIGHT':
-                    case 'SPEED_DROP_COEFFICIENT':
-                        this.tRex.config[setting] = value;
-                        break;
-                    case 'INITIAL_JUMP_VELOCITY':
-                        this.tRex.setJumpVelocity(value);
-                        break;
-                    case 'SPEED':
-                        this.setSpeed(value);
-                        break;
-                }
-            }
-        },
-
-        /**
-         * Cache the appropriate image sprite from the page and get the sprite sheet
-         * definition.
-         */
-        loadImages() {
-            if (IS_HIDPI) {
-                Runner.imageSprite = document.getElementById('offline-resources-2x');
-                this.spriteDef = Runner.spriteDefinition.HDPI;
-            } else {
-                Runner.imageSprite = document.getElementById('offline-resources-1x');
-                this.spriteDef = Runner.spriteDefinition.LDPI;
-            }
-
-            if (Runner.imageSprite.complete) {
-                this.init();
-            } else {
-                // If the images are not yet loaded, add a listener.
-                Runner.imageSprite.addEventListener(Runner.events.LOAD,
-                    this.init.bind(this));
-            }
-        },
-
-        /**
-         * Load and decode base 64 encoded sounds.
-         */
-        loadSounds() {
-            if (!IS_IOS) {
-                this.audioContext = new AudioContext();
-
-                var resourceTemplate =
-                    document.getElementById(this.config.RESOURCE_TEMPLATE_ID).content;
-
-                for (var sound in Runner.sounds) {
-                    var soundSrc =
-                        resourceTemplate.getElementById(Runner.sounds[sound]).src;
-                    soundSrc = soundSrc.substr(soundSrc.indexOf(',') + 1);
-                    var buffer = decodeBase64ToArrayBuffer(soundSrc);
-
-                    // Async, so no guarantee of order in array.
-                    this.audioContext.decodeAudioData(buffer, function (index, audioData) {
-                        this.soundFx[index] = audioData;
-                    }.bind(this, sound));
-                }
-            }
-        },
-
-        /**
-         * Sets the game speed. Adjust the speed accordingly if on a smaller screen.
-         * @param {number} opt_speed
-         */
-        setSpeed(opt_speed) {
-            var speed = opt_speed || this.currentSpeed;
-
-            // Reduce the speed on smaller mobile screens.
-            if (this.dimensions.WIDTH < DEFAULT_WIDTH) {
-                var mobileSpeed = speed * this.dimensions.WIDTH / DEFAULT_WIDTH *
-                    this.config.MOBILE_SPEED_COEFFICIENT;
-                this.currentSpeed = mobileSpeed > speed ? speed : mobileSpeed;
-            } else if (opt_speed) {
-                this.currentSpeed = opt_speed;
-            }
-        },
-
-        /**
-         * Game initialiser.
-         */
-        init() {
-            // Hide the static icon.
-            document.querySelector('.' + Runner.classes.ICON).style.visibility =
-                'hidden';
-
-            this.adjustDimensions();
-            this.setSpeed();
-
-            this.containerEl = document.createElement('div');
-            this.containerEl.className = Runner.classes.CONTAINER;
-
-            // Player canvas container.
-            this.canvas = createCanvas(this.containerEl, this.dimensions.WIDTH,
-                this.dimensions.HEIGHT, Runner.classes.PLAYER);
-
-            this.canvasCtx = this.canvas.getContext('2d');
-            this.canvasCtx.fillStyle = '#f7f7f7';
-            this.canvasCtx.fill();
-            Runner.updateCanvasScaling(this.canvas);
-
-            // Horizon contains clouds, obstacles and the ground.
-            this.horizon = new Horizon(this.canvas, this.spriteDef, this.dimensions,
-                this.config.GAP_COEFFICIENT);
-
-            // Distance meter
-            this.distanceMeter = new DistanceMeter(this.canvas,
-                this.spriteDef.TEXT_SPRITE, this.dimensions.WIDTH);
-
-            // Draw t-rex
-            this.tRex = new Trex(this.canvas, this.spriteDef.TREX);
-
-            this.outerContainerEl.appendChild(this.containerEl);
-
-            if (IS_MOBILE) {
-                this.createTouchController();
-            }
-
-            this.startListening();
-            this.update();
-
-            window.addEventListener(Runner.events.RESIZE,
-                this.debounceResize.bind(this));
-        },
-
-        /**
-         * Create the touch controller. A div that covers whole screen.
-         */
-        createTouchController() {
-            this.touchController = document.createElement('div');
-            this.touchController.className = Runner.classes.TOUCH_CONTROLLER;
-            this.outerContainerEl.appendChild(this.touchController);
-        },
-
-        /**
-         * Debounce the resize event.
-         */
-        debounceResize() {
-            if (!this.resizeTimerId_) {
-                this.resizeTimerId_ =
-                    setInterval(this.adjustDimensions.bind(this), 250);
-            }
-        },
-
-        /**
-         * Adjust game space dimensions on resize.
-         */
-        adjustDimensions() {
-            clearInterval(this.resizeTimerId_);
-            this.resizeTimerId_ = null;
-
-            var boxStyles = window.getComputedStyle(this.outerContainerEl);
-            var padding = Number(boxStyles.paddingLeft.substr(0,
-                boxStyles.paddingLeft.length - 2));
-
-            this.dimensions.WIDTH = this.outerContainerEl.offsetWidth - padding * 2;
-            this.dimensions.WIDTH = Math.min(DEFAULT_WIDTH, this.dimensions.WIDTH); //Arcade Mode
-            if (this.activated) {
-                this.setArcadeModeContainerScale();
-            }
-
-            // Redraw the elements back onto the canvas.
-            if (this.canvas) {
-                this.canvas.width = this.dimensions.WIDTH;
-                this.canvas.height = this.dimensions.HEIGHT;
-
-                Runner.updateCanvasScaling(this.canvas);
-
-                this.distanceMeter.calcXPos(this.dimensions.WIDTH);
-                this.clearCanvas();
-                this.horizon.update(0, 0, true);
-                this.tRex.update(0);
-
-                // Outer container and distance meter.
-                if (this.playing || this.crashed || this.paused) {
-                    this.containerEl.style.width = this.dimensions.WIDTH + 'px';
-                    this.containerEl.style.height = this.dimensions.HEIGHT + 'px';
-                    this.distanceMeter.update(0, Math.ceil(this.distanceRan));
-                    this.stop();
-                } else {
-                    this.tRex.draw(0, 0);
-                }
-
-                // Game over panel.
-                if (this.crashed && this.gameOverPanel) {
-                    this.gameOverPanel.updateDimensions(this.dimensions.WIDTH);
-                    this.gameOverPanel.draw();
-                }
-            }
-        },
-
-        /**
-         * Play the game intro.
-         * Canvas container width expands out to the full width.
-         */
-        playIntro() {
-            if (!this.activated && !this.crashed) {
-                this.playingIntro = true;
-                this.tRex.playingIntro = true;
-
-                // CSS animation definition.
-                var keyframes = '@-webkit-keyframes intro { ' +
-                    'from { width:' + Trex.config.WIDTH + 'px }' +
-                    'to { width: ' + this.dimensions.WIDTH + 'px }' +
-                    '}';
-
-                // create a style sheet to put the keyframe rule in
-                // and then place the style sheet in the html head
-                var sheet = document.createElement('style');
-                sheet.innerHTML = keyframes;
-                document.head.appendChild(sheet);
-
-                this.containerEl.addEventListener(Runner.events.ANIM_END,
-                    this.startGame.bind(this));
-
-                this.containerEl.style.webkitAnimation = 'intro .4s ease-out 1 both';
-                this.containerEl.style.width = this.dimensions.WIDTH + 'px';
-
-                // if (this.touchController) {
-                //     this.outerContainerEl.appendChild(this.touchController);
-                // }
-                this.playing = true;
-                this.activated = true;
-            } else if (this.crashed) {
-                this.restart();
-            }
-        },
-
-
-        /**
-         * Update the game status to started.
-         */
-        startGame() {
-            this.setArcadeMode();
-            this.runningTime = 0;
-            this.playingIntro = false;
-            this.tRex.playingIntro = false;
-            this.containerEl.style.webkitAnimation = '';
-            this.playCount++;
-
-            // Handle tabbing off the page. Pause the current game.
-            document.addEventListener(Runner.events.VISIBILITY,
-                this.onVisibilityChange.bind(this));
-
-            window.addEventListener(Runner.events.BLUR,
-                this.onVisibilityChange.bind(this));
-
-            window.addEventListener(Runner.events.FOCUS,
-                this.onVisibilityChange.bind(this));
-        },
-
-        clearCanvas() {
-            this.canvasCtx.clearRect(0, 0, this.dimensions.WIDTH,
-                this.dimensions.HEIGHT);
-        },
-
-        /**
-         * Update the game frame and schedules the next one.
-         */
-        update() {
-            this.updatePending = false;
-
-            var now = getTimeStamp();
-            var deltaTime = now - (this.time || now);
-            this.time = now;
-
-            if (this.playing) {
-                this.clearCanvas();
-
-                if (this.tRex.jumping) {
-                    this.tRex.updateJump(deltaTime);
-                }
-
-                this.runningTime += deltaTime;
-                var hasObstacles = this.runningTime > this.config.CLEAR_TIME;
-
-                // First jump triggers the intro.
-                if (this.tRex.jumpCount == 1 && !this.playingIntro) {
-                    this.playIntro();
-                }
-
-                // The horizon doesn't move until the intro is over.
-                if (this.playingIntro) {
-                    this.horizon.update(0, this.currentSpeed, hasObstacles);
-                } else {
-                    deltaTime = !this.activated ? 0 : deltaTime;
-                    this.horizon.update(deltaTime, this.currentSpeed, hasObstacles,
-                        this.inverted);
-                }
-
-                // Check for collisions.
-                var collision = hasObstacles &&
-                    checkForCollision(this.horizon.obstacles[0], this.tRex);
-
-                if (!collision) {
-                    this.distanceRan += this.currentSpeed * deltaTime / this.msPerFrame;
-
-                    if (this.currentSpeed < this.config.MAX_SPEED) {
-                        this.currentSpeed += this.config.ACCELERATION;
-                    }
-                } else {
-                    this.gameOver();
-                }
-
-                var playAchievementSound = this.distanceMeter.update(deltaTime,
-                    Math.ceil(this.distanceRan));
-
-                if (playAchievementSound) {
-                    this.playSound(this.soundFx.SCORE);
-                }
-
-                // Night mode.
-                if (this.invertTimer > this.config.INVERT_FADE_DURATION) {
-                    this.invertTimer = 0;
-                    this.invertTrigger = false;
-                    this.invert();
-                } else if (this.invertTimer) {
-                    this.invertTimer += deltaTime;
-                } else {
-                    var actualDistance =
-                        this.distanceMeter.getActualDistance(Math.ceil(this.distanceRan));
-
-                    if (actualDistance > 0) {
-                        this.invertTrigger = !(actualDistance %
-                            this.config.INVERT_DISTANCE);
-
-                        if (this.invertTrigger && this.invertTimer === 0) {
-                            this.invertTimer += deltaTime;
-                            this.invert();
-                        }
-                    }
-                }
-            }
-
-            if (this.playing || (!this.activated &&
-                this.tRex.blinkCount < Runner.config.MAX_BLINK_COUNT)) {
-                this.tRex.update(deltaTime);
-                this.scheduleNextUpdate();
-            }
-        },
-
-        /**
-         * Event handler.
-         */
-        handleEvent(e) {
-            return (((evtType, events) => {
-                switch (evtType) {
-                    case events.KEYDOWN:
-                    case events.TOUCHSTART:
-                    case events.MOUSEDOWN:
-                        this.onKeyDown(e);
-                        break;
-                    case events.KEYUP:
-                    case events.TOUCHEND:
-                    case events.MOUSEUP:
-                        this.onKeyUp(e);
-                        break;
-                }
-            }))(e.type, Runner.events);
-        },
-
-        /**
-         * Bind relevant key / mouse / touch listeners.
-         */
-        startListening() {
-            // Keys.
-            document.addEventListener(Runner.events.KEYDOWN, this);
-            document.addEventListener(Runner.events.KEYUP, this);
-
-            if (IS_MOBILE) {
-                // Mobile only touch devices.
-                this.touchController.addEventListener(Runner.events.TOUCHSTART, this);
-                this.touchController.addEventListener(Runner.events.TOUCHEND, this);
-                this.containerEl.addEventListener(Runner.events.TOUCHSTART, this);
-            } else {
-                // Mouse.
-                document.addEventListener(Runner.events.MOUSEDOWN, this);
-                document.addEventListener(Runner.events.MOUSEUP, this);
-            }
-        },
-
-        /**
-         * Remove all listeners.
-         */
-        stopListening() {
-            document.removeEventListener(Runner.events.KEYDOWN, this);
-            document.removeEventListener(Runner.events.KEYUP, this);
-
-            if (IS_MOBILE) {
-                this.touchController.removeEventListener(Runner.events.TOUCHSTART, this);
-                this.touchController.removeEventListener(Runner.events.TOUCHEND, this);
-                this.containerEl.removeEventListener(Runner.events.TOUCHSTART, this);
-            } else {
-                document.removeEventListener(Runner.events.MOUSEDOWN, this);
-                document.removeEventListener(Runner.events.MOUSEUP, this);
-            }
-        },
-
-        /**
-         * Process keydown.
-         * @param {Event} e
-         */
-        onKeyDown(e) {
-            console.log(e)
-            // Prevent native page scrolling whilst tapping on mobile.
-            if (IS_MOBILE && this.playing) {
-                e.preventDefault();
-            }
-
-            if (e.target != this.detailsButton) {
-                if (!this.crashed && (Runner.keycodes.JUMP[e.keyCode] ||
-                    e.type == Runner.events.TOUCHSTART)) {
-                    if (!this.playing) {
-                        // this.loadSounds();
-                        this.playing = true;
-                        this.update();
-                        if (window.errorPageController) {
-                            errorPageController.trackEasterEgg();
-                        }
-                    }
-                    //  Play sound effect and jump on starting the game for the first time.
-                    if (!this.tRex.jumping && !this.tRex.ducking) {
-                        this.playSound(this.soundFx.BUTTON_PRESS);
-                        this.tRex.startJump(this.currentSpeed);
-                    }
-                }
-
-                if (this.crashed && e.type == Runner.events.TOUCHSTART &&
-                    e.currentTarget == this.containerEl) {
-                    this.restart();
-                }
-            }
-
-            if (this.playing && !this.crashed && Runner.keycodes.DUCK[e.keyCode]) {
-                e.preventDefault();
-                if (this.tRex.jumping) {
-                    // Speed drop, activated only when jump key is not pressed.
-                    this.tRex.setSpeedDrop();
-                } else if (!this.tRex.jumping && !this.tRex.ducking) {
-                    // Duck.
-                    this.tRex.setDuck(true);
-                }
-            }
-        },
-
-
-        /**
-         * Process key up.
-         * @param {Event} e
-         */
-        onKeyUp(e) {
-            var keyCode = String(e.keyCode);
-            var isjumpKey = Runner.keycodes.JUMP[keyCode] ||
-                e.type == Runner.events.TOUCHEND ||
-                e.type == Runner.events.MOUSEDOWN;
-
-            if (this.isRunning() && isjumpKey) {
-                this.tRex.endJump();
-            } else if (Runner.keycodes.DUCK[keyCode]) {
-                this.tRex.speedDrop = false;
-                this.tRex.setDuck(false);
-            } else if (this.crashed) {
-                // Check that enough time has elapsed before allowing jump key to restart.
-                var deltaTime = getTimeStamp() - this.time;
-
-                if (Runner.keycodes.RESTART[keyCode] || this.isLeftClickOnCanvas(e) ||
-                    (deltaTime >= this.config.GAMEOVER_CLEAR_TIME &&
-                        Runner.keycodes.JUMP[keyCode])) {
-                    this.restart();
-                }
-            } else if (this.paused && isjumpKey) {
-                // Reset the jump state
-                this.tRex.reset();
-                this.play();
-            }
-        },
-
-        /**
-         * Returns whether the event was a left click on canvas.
-         * On Windows right click is registered as a click.
-         * @param {Event} e
-         * @return {boolean}
-         */
-        isLeftClickOnCanvas(e) {
-            return e.button != null && e.button < 2 &&
-                e.type == Runner.events.MOUSEUP && e.target == this.canvas;
-        },
-
-        /**
-         * RequestAnimationFrame wrapper.
-         */
-        scheduleNextUpdate() {
-            if (!this.updatePending) {
-                this.updatePending = true;
-                this.raqId = requestAnimationFrame(this.update.bind(this));
-            }
-        },
-
-        /**
-         * Whether the game is running.
-         * @return {boolean}
-         */
-        isRunning() {
-            return !!this.raqId;
-        },
-
-        /**
-         * Game over state.
-         */
-        gameOver() {
-            this.playSound(this.soundFx.HIT);
-            vibrate(200);
-
-            this.stop();
-            this.crashed = true;
-            this.distanceMeter.acheivement = false;
-
-            this.tRex.update(100, Trex.status.CRASHED);
-
-            // Game over panel.
-            if (!this.gameOverPanel) {
-                this.gameOverPanel = new GameOverPanel(this.canvas,
-                    this.spriteDef.TEXT_SPRITE, this.spriteDef.RESTART,
-                    this.dimensions);
-            } else {
-                this.gameOverPanel.draw();
-            }
-
-            // Update the high score.
-            if (this.distanceRan > this.highestScore) {
-                this.highestScore = Math.ceil(this.distanceRan);
-                this.distanceMeter.setHighScore(this.highestScore);
-            }
-
-            // Reset the time clock.
-            this.time = getTimeStamp();
-        },
-
-        stop() {
-            this.playing = false;
-            this.paused = true;
-            cancelAnimationFrame(this.raqId);
-            this.raqId = 0;
-        },
-
-        play() {
-            if (!this.crashed) {
-                this.playing = true;
-                this.paused = false;
-                this.tRex.update(0, Trex.status.RUNNING);
-                this.time = getTimeStamp();
-                this.update();
-            }
-        },
-
-        restart() {
-            if (!this.raqId) {
-                this.playCount++;
-                this.runningTime = 0;
-                this.playing = true;
-                this.crashed = false;
-                this.distanceRan = 0;
-                this.setSpeed(this.config.SPEED);
-                this.time = getTimeStamp();
-                this.containerEl.classList.remove(Runner.classes.CRASHED);
-                this.clearCanvas();
-                this.distanceMeter.reset(this.highestScore);
-                this.horizon.reset();
-                this.tRex.reset();
-                this.playSound(this.soundFx.BUTTON_PRESS);
-                this.invert(true);
-                this.update();
-            }
-        },
-
-        /**
-         * Hides offline messaging for a fullscreen game only experience.
-         */
-        setArcadeMode() {
-            document.body.classList.add(Runner.classes.ARCADE_MODE);
-            this.setArcadeModeContainerScale();
-        },
-
-        /**
-         * Sets the scaling for arcade mode.
-         */
-        setArcadeModeContainerScale() {
-            const windowHeight = window.innerHeight;
-            const scaleHeight = windowHeight / this.dimensions.HEIGHT;
-            const scaleWidth = window.innerWidth / this.dimensions.WIDTH;
-            const scale = Math.max(1, Math.min(scaleHeight, scaleWidth));
-            const scaledCanvasHeight = this.dimensions.HEIGHT * scale;
-            // Positions the game container at 10% of the available vertical window
-            // height minus the game container height.
-            const translateY = Math.ceil(Math.max(0, (windowHeight - scaledCanvasHeight -
-                                                      Runner.config.ARCADE_MODE_INITIAL_TOP_POSITION) *
-                                                  Runner.config.ARCADE_MODE_TOP_POSITION_PERCENT)) *
-                  window.devicePixelRatio;
-
-            const cssScale = scale;
-            this.containerEl.style.transform =
-                'scale(' + cssScale + ') translateY(' + translateY + 'px)';
-        },
-
-        /**
-         * Pause the game if the tab is not in focus.
-         */
-        onVisibilityChange(e) {
-            if (document.hidden || document.webkitHidden || e.type == 'blur' ||
-                document.visibilityState != 'visible') {
-                this.stop();
-            } else if (!this.crashed) {
-                this.tRex.reset();
-                this.play();
-            }
-        },
-
-        /**
-         * Play a sound.
-         * @param {SoundBuffer} soundBuffer
-         */
-        playSound(soundBuffer) {
-            if (soundBuffer) {
-                var sourceNode = this.audioContext.createBufferSource();
-                sourceNode.buffer = soundBuffer;
-                sourceNode.connect(this.audioContext.destination);
-                sourceNode.start(0);
-            }
-        },
-
-        /**
-         * Inverts the current page / canvas colors.
-         * @param {boolean} Whether to reset colors.
-         */
-        invert(reset) {
-            if (reset) {
-                document.body.classList.toggle(Runner.classes.INVERTED, false);
-                this.invertTimer = 0;
-                this.inverted = false;
-            } else {
-                this.inverted = document.body.classList.toggle(Runner.classes.INVERTED,
-                    this.invertTrigger);
-            }
-        }
-    };
-
-
     /**
      * Updates the canvas size taking into
      * account the backing store pixel ratio and
@@ -1042,31 +1041,16 @@
      * @param {!Object} dimensions Canvas dimensions.
      * @constructor
      */
-    function GameOverPanel(canvas, textImgPos, restartImgPos, dimensions) {
-        this.canvas = canvas;
-        this.canvasCtx = canvas.getContext('2d');
-        this.canvasDimensions = dimensions;
-        this.textImgPos = textImgPos;
-        this.restartImgPos = restartImgPos;
-        this.draw();
-    };
+    class GameOverPanel {
+        constructor(canvas, textImgPos, restartImgPos, dimensions) {
+            this.canvas = canvas;
+            this.canvasCtx = canvas.getContext('2d');
+            this.canvasDimensions = dimensions;
+            this.textImgPos = textImgPos;
+            this.restartImgPos = restartImgPos;
+            this.draw();
+        }
 
-
-    /**
-     * Dimensions used in the panel.
-     * @enum {number}
-     */
-    GameOverPanel.dimensions = {
-        TEXT_X: 0,
-        TEXT_Y: 13,
-        TEXT_WIDTH: 191,
-        TEXT_HEIGHT: 11,
-        RESTART_WIDTH: 36,
-        RESTART_HEIGHT: 32
-    };
-
-
-    GameOverPanel.prototype = {
         /**
          * Update the panel dimensions.
          * @param {number} width New canvas width.
@@ -1077,7 +1061,7 @@
             if (opt_height) {
                 this.canvasDimensions.HEIGHT = opt_height;
             }
-        },
+        }
 
         /**
          * Draw the panel.
@@ -1127,6 +1111,20 @@
                 restartTargetX, restartTargetY, dimensions.RESTART_WIDTH,
                 dimensions.RESTART_HEIGHT);
         }
+    }
+
+
+    /**
+     * Dimensions used in the panel.
+     * @enum {number}
+     */
+    GameOverPanel.dimensions = {
+        TEXT_X: 0,
+        TEXT_Y: 13,
+        TEXT_WIDTH: 191,
+        TEXT_HEIGHT: 11,
+        RESTART_WIDTH: 36,
+        RESTART_HEIGHT: 32
     };
 
 
@@ -1190,7 +1188,7 @@
             }
         }
         return false;
-    };
+    }
 
 
     /**
@@ -1205,7 +1203,7 @@
             box.y + adjustment.y,
             box.width,
             box.height);
-    };
+    }
 
 
     /**
@@ -1220,7 +1218,7 @@
         canvasCtx.strokeRect(obstacleBox.x, obstacleBox.y,
             obstacleBox.width, obstacleBox.height);
         canvasCtx.restore();
-    };
+    }
 
 
     /**
@@ -1246,7 +1244,7 @@
         }
 
         return crashed;
-    };
+    }
 
 
     //******************************************************************************
@@ -1263,7 +1261,7 @@
         this.y = y;
         this.width = w;
         this.height = h;
-    };
+    }
 
 
     //******************************************************************************
@@ -1300,7 +1298,7 @@
         this.timer = 0;
 
         this.init(speed);
-    };
+    }
 
     /**
      * Coefficient for calculating the maximum gap.
@@ -1526,35 +1524,273 @@
      * @param {Object} spritePos Positioning within image sprite.
      * @constructor
      */
-    function Trex(canvas, spritePos) {
-        this.canvas = canvas;
-        this.canvasCtx = canvas.getContext('2d');
-        this.spritePos = spritePos;
-        this.xPos = 0;
-        this.yPos = 0;
-        // Position when on the ground.
-        this.groundYPos = 0;
-        this.currentFrame = 0;
-        this.currentAnimFrames = [];
-        this.blinkDelay = 0;
-        this.blinkCount = 0;
-        this.animStartTime = 0;
-        this.timer = 0;
-        this.msPerFrame = 1000 / FPS;
-        this.config = Trex.config;
-        // Current status.
-        this.status = Trex.status.WAITING;
+    class Trex {
+        constructor(canvas, spritePos) {
+            this.canvas = canvas;
+            this.canvasCtx = canvas.getContext('2d');
+            this.spritePos = spritePos;
+            this.xPos = 0;
+            this.yPos = 0;
+            // Position when on the ground.
+            this.groundYPos = 0;
+            this.currentFrame = 0;
+            this.currentAnimFrames = [];
+            this.blinkDelay = 0;
+            this.blinkCount = 0;
+            this.animStartTime = 0;
+            this.timer = 0;
+            this.msPerFrame = 1000 / FPS;
+            this.config = Trex.config;
+            // Current status.
+            this.status = Trex.status.WAITING;
 
-        this.jumping = false;
-        this.ducking = false;
-        this.jumpVelocity = 0;
-        this.reachedMinHeight = false;
-        this.speedDrop = false;
-        this.jumpCount = 0;
-        this.jumpspotX = 0;
+            this.jumping = false;
+            this.ducking = false;
+            this.jumpVelocity = 0;
+            this.reachedMinHeight = false;
+            this.speedDrop = false;
+            this.jumpCount = 0;
+            this.jumpspotX = 0;
 
-        this.init();
-    };
+            this.init();
+        }
+
+        /**
+         * T-rex player initaliser.
+         * Sets the t-rex to blink at random intervals.
+         */
+        init() {
+            this.groundYPos = Runner.defaultDimensions.HEIGHT - this.config.HEIGHT -
+                Runner.config.BOTTOM_PAD;
+            this.yPos = this.groundYPos;
+            this.minJumpHeight = this.groundYPos - this.config.MIN_JUMP_HEIGHT;
+
+            this.draw(0, 0);
+            this.update(0, Trex.status.WAITING);
+        }
+
+        /**
+         * Setter for the jump velocity.
+         * The approriate drop velocity is also set.
+         */
+        setJumpVelocity(setting) {
+            this.config.INIITAL_JUMP_VELOCITY = -setting;
+            this.config.DROP_VELOCITY = -setting / 2;
+        }
+
+        /**
+         * Set the animation status.
+         * @param {!number} deltaTime
+         * @param {Trex.status} status Optional status to switch to.
+         */
+        update(deltaTime, opt_status) {
+            this.timer += deltaTime;
+
+            // Update the status.
+            if (opt_status) {
+                this.status = opt_status;
+                this.currentFrame = 0;
+                this.msPerFrame = Trex.animFrames[opt_status].msPerFrame;
+                this.currentAnimFrames = Trex.animFrames[opt_status].frames;
+
+                if (opt_status == Trex.status.WAITING) {
+                    this.animStartTime = getTimeStamp();
+                    this.setBlinkDelay();
+                }
+            }
+
+            // Game intro animation, T-rex moves in from the left.
+            if (this.playingIntro && this.xPos < this.config.START_X_POS) {
+                this.xPos += Math.round((this.config.START_X_POS /
+                    this.config.INTRO_DURATION) * deltaTime);
+            }
+
+            if (this.status == Trex.status.WAITING) {
+                this.blink(getTimeStamp());
+            } else {
+                this.draw(this.currentAnimFrames[this.currentFrame], 0);
+            }
+
+            // Update the frame position.
+            if (this.timer >= this.msPerFrame) {
+                this.currentFrame = this.currentFrame ==
+                    this.currentAnimFrames.length - 1 ? 0 : this.currentFrame + 1;
+                this.timer = 0;
+            }
+
+            // Speed drop becomes duck if the down key is still being pressed.
+            if (this.speedDrop && this.yPos == this.groundYPos) {
+                this.speedDrop = false;
+                this.setDuck(true);
+            }
+        }
+
+        /**
+         * Draw the t-rex to a particular position.
+         * @param {number} x
+         * @param {number} y
+         */
+        draw(x, y) {
+            var sourceX = x;
+            var sourceY = y;
+            var sourceWidth = this.ducking && this.status != Trex.status.CRASHED ?
+                this.config.WIDTH_DUCK : this.config.WIDTH;
+            var sourceHeight = this.config.HEIGHT;
+
+            if (IS_HIDPI) {
+                sourceX *= 2;
+                sourceY *= 2;
+                sourceWidth *= 2;
+                sourceHeight *= 2;
+            }
+
+            // Adjustments for sprite sheet position.
+            sourceX += this.spritePos.x;
+            sourceY += this.spritePos.y;
+
+            // Ducking.
+            if (this.ducking && this.status != Trex.status.CRASHED) {
+                this.canvasCtx.drawImage(Runner.imageSprite, sourceX, sourceY,
+                    sourceWidth, sourceHeight,
+                    this.xPos, this.yPos,
+                    this.config.WIDTH_DUCK, this.config.HEIGHT);
+            } else {
+                // Crashed whilst ducking. Trex is standing up so needs adjustment.
+                if (this.ducking && this.status == Trex.status.CRASHED) {
+                    this.xPos++;
+                }
+                // Standing / running
+                this.canvasCtx.drawImage(Runner.imageSprite, sourceX, sourceY,
+                    sourceWidth, sourceHeight,
+                    this.xPos, this.yPos,
+                    this.config.WIDTH, this.config.HEIGHT);
+            }
+        }
+
+        /**
+         * Sets a random time for the blink to happen.
+         */
+        setBlinkDelay() {
+            this.blinkDelay = Math.ceil(Math.random() * Trex.BLINK_TIMING);
+        }
+
+        /**
+         * Make t-rex blink at random intervals.
+         * @param {number} time Current time in milliseconds.
+         */
+        blink(time) {
+            var deltaTime = time - this.animStartTime;
+
+            if (deltaTime >= this.blinkDelay) {
+                this.draw(this.currentAnimFrames[this.currentFrame], 0);
+
+                if (this.currentFrame == 1) {
+                    // Set new random delay to blink.
+                    this.setBlinkDelay();
+                    this.animStartTime = time;
+                    this.blinkCount++;
+                }
+            }
+        }
+
+        /**
+         * Initialise a jump.
+         * @param {number} speed
+         */
+        startJump(speed) {
+            if (!this.jumping) {
+                this.update(0, Trex.status.JUMPING);
+                // Tweak the jump velocity based on the speed.
+                this.jumpVelocity = this.config.INIITAL_JUMP_VELOCITY - (speed / 10);
+                this.jumping = true;
+                this.reachedMinHeight = false;
+                this.speedDrop = false;
+            }
+        }
+
+        /**
+         * Jump is complete, falling down.
+         */
+        endJump() {
+            if (this.reachedMinHeight &&
+                this.jumpVelocity < this.config.DROP_VELOCITY) {
+                this.jumpVelocity = this.config.DROP_VELOCITY;
+            }
+        }
+
+        /**
+         * Update frame for a jump.
+         * @param {number} deltaTime
+         * @param {number} speed
+         */
+        updateJump(deltaTime, speed) {
+            var msPerFrame = Trex.animFrames[this.status].msPerFrame;
+            var framesElapsed = deltaTime / msPerFrame;
+
+            // Speed drop makes Trex fall faster.
+            if (this.speedDrop) {
+                this.yPos += Math.round(this.jumpVelocity *
+                    this.config.SPEED_DROP_COEFFICIENT * framesElapsed);
+            } else {
+                this.yPos += Math.round(this.jumpVelocity * framesElapsed);
+            }
+
+            this.jumpVelocity += this.config.GRAVITY * framesElapsed;
+
+            // Minimum height has been reached.
+            if (this.yPos < this.minJumpHeight || this.speedDrop) {
+                this.reachedMinHeight = true;
+            }
+
+            // Reached max height
+            if (this.yPos < this.config.MAX_JUMP_HEIGHT || this.speedDrop) {
+                this.endJump();
+            }
+
+            // Back down at ground level. Jump completed.
+            if (this.yPos > this.groundYPos) {
+                this.reset();
+                this.jumpCount++;
+            }
+
+            this.update(deltaTime);
+        }
+
+        /**
+         * Set the speed drop. Immediately cancels the current jump.
+         */
+        setSpeedDrop() {
+            this.speedDrop = true;
+            this.jumpVelocity = 1;
+        }
+
+        /**
+         * @param {boolean} isDucking.
+         */
+        setDuck(isDucking) {
+            if (isDucking && this.status != Trex.status.DUCKING) {
+                this.update(0, Trex.status.DUCKING);
+                this.ducking = true;
+            } else if (this.status == Trex.status.DUCKING) {
+                this.update(0, Trex.status.RUNNING);
+                this.ducking = false;
+            }
+        }
+
+        /**
+         * Reset the t-rex to running at start of game.
+         */
+        reset() {
+            this.yPos = this.groundYPos;
+            this.jumpVelocity = 0;
+            this.jumping = false;
+            this.ducking = false;
+            this.update(0, Trex.status.RUNNING);
+            this.midair = false;
+            this.speedDrop = false;
+            this.jumpCount = 0;
+        }
+    }
 
 
     /**
@@ -1644,245 +1880,6 @@
     };
 
 
-    Trex.prototype = {
-        /**
-         * T-rex player initaliser.
-         * Sets the t-rex to blink at random intervals.
-         */
-        init() {
-            this.groundYPos = Runner.defaultDimensions.HEIGHT - this.config.HEIGHT -
-                Runner.config.BOTTOM_PAD;
-            this.yPos = this.groundYPos;
-            this.minJumpHeight = this.groundYPos - this.config.MIN_JUMP_HEIGHT;
-
-            this.draw(0, 0);
-            this.update(0, Trex.status.WAITING);
-        },
-
-        /**
-         * Setter for the jump velocity.
-         * The approriate drop velocity is also set.
-         */
-        setJumpVelocity(setting) {
-            this.config.INIITAL_JUMP_VELOCITY = -setting;
-            this.config.DROP_VELOCITY = -setting / 2;
-        },
-
-        /**
-         * Set the animation status.
-         * @param {!number} deltaTime
-         * @param {Trex.status} status Optional status to switch to.
-         */
-        update(deltaTime, opt_status) {
-            this.timer += deltaTime;
-
-            // Update the status.
-            if (opt_status) {
-                this.status = opt_status;
-                this.currentFrame = 0;
-                this.msPerFrame = Trex.animFrames[opt_status].msPerFrame;
-                this.currentAnimFrames = Trex.animFrames[opt_status].frames;
-
-                if (opt_status == Trex.status.WAITING) {
-                    this.animStartTime = getTimeStamp();
-                    this.setBlinkDelay();
-                }
-            }
-
-            // Game intro animation, T-rex moves in from the left.
-            if (this.playingIntro && this.xPos < this.config.START_X_POS) {
-                this.xPos += Math.round((this.config.START_X_POS /
-                    this.config.INTRO_DURATION) * deltaTime);
-            }
-
-            if (this.status == Trex.status.WAITING) {
-                this.blink(getTimeStamp());
-            } else {
-                this.draw(this.currentAnimFrames[this.currentFrame], 0);
-            }
-
-            // Update the frame position.
-            if (this.timer >= this.msPerFrame) {
-                this.currentFrame = this.currentFrame ==
-                    this.currentAnimFrames.length - 1 ? 0 : this.currentFrame + 1;
-                this.timer = 0;
-            }
-
-            // Speed drop becomes duck if the down key is still being pressed.
-            if (this.speedDrop && this.yPos == this.groundYPos) {
-                this.speedDrop = false;
-                this.setDuck(true);
-            }
-        },
-
-        /**
-         * Draw the t-rex to a particular position.
-         * @param {number} x
-         * @param {number} y
-         */
-        draw(x, y) {
-            var sourceX = x;
-            var sourceY = y;
-            var sourceWidth = this.ducking && this.status != Trex.status.CRASHED ?
-                this.config.WIDTH_DUCK : this.config.WIDTH;
-            var sourceHeight = this.config.HEIGHT;
-
-            if (IS_HIDPI) {
-                sourceX *= 2;
-                sourceY *= 2;
-                sourceWidth *= 2;
-                sourceHeight *= 2;
-            }
-
-            // Adjustments for sprite sheet position.
-            sourceX += this.spritePos.x;
-            sourceY += this.spritePos.y;
-
-            // Ducking.
-            if (this.ducking && this.status != Trex.status.CRASHED) {
-                this.canvasCtx.drawImage(Runner.imageSprite, sourceX, sourceY,
-                    sourceWidth, sourceHeight,
-                    this.xPos, this.yPos,
-                    this.config.WIDTH_DUCK, this.config.HEIGHT);
-            } else {
-                // Crashed whilst ducking. Trex is standing up so needs adjustment.
-                if (this.ducking && this.status == Trex.status.CRASHED) {
-                    this.xPos++;
-                }
-                // Standing / running
-                this.canvasCtx.drawImage(Runner.imageSprite, sourceX, sourceY,
-                    sourceWidth, sourceHeight,
-                    this.xPos, this.yPos,
-                    this.config.WIDTH, this.config.HEIGHT);
-            }
-        },
-
-        /**
-         * Sets a random time for the blink to happen.
-         */
-        setBlinkDelay() {
-            this.blinkDelay = Math.ceil(Math.random() * Trex.BLINK_TIMING);
-        },
-
-        /**
-         * Make t-rex blink at random intervals.
-         * @param {number} time Current time in milliseconds.
-         */
-        blink(time) {
-            var deltaTime = time - this.animStartTime;
-
-            if (deltaTime >= this.blinkDelay) {
-                this.draw(this.currentAnimFrames[this.currentFrame], 0);
-
-                if (this.currentFrame == 1) {
-                    // Set new random delay to blink.
-                    this.setBlinkDelay();
-                    this.animStartTime = time;
-                    this.blinkCount++;
-                }
-            }
-        },
-
-        /**
-         * Initialise a jump.
-         * @param {number} speed
-         */
-        startJump(speed) {
-            if (!this.jumping) {
-                this.update(0, Trex.status.JUMPING);
-                // Tweak the jump velocity based on the speed.
-                this.jumpVelocity = this.config.INIITAL_JUMP_VELOCITY - (speed / 10);
-                this.jumping = true;
-                this.reachedMinHeight = false;
-                this.speedDrop = false;
-            }
-        },
-
-        /**
-         * Jump is complete, falling down.
-         */
-        endJump() {
-            if (this.reachedMinHeight &&
-                this.jumpVelocity < this.config.DROP_VELOCITY) {
-                this.jumpVelocity = this.config.DROP_VELOCITY;
-            }
-        },
-
-        /**
-         * Update frame for a jump.
-         * @param {number} deltaTime
-         * @param {number} speed
-         */
-        updateJump(deltaTime, speed) {
-            var msPerFrame = Trex.animFrames[this.status].msPerFrame;
-            var framesElapsed = deltaTime / msPerFrame;
-
-            // Speed drop makes Trex fall faster.
-            if (this.speedDrop) {
-                this.yPos += Math.round(this.jumpVelocity *
-                    this.config.SPEED_DROP_COEFFICIENT * framesElapsed);
-            } else {
-                this.yPos += Math.round(this.jumpVelocity * framesElapsed);
-            }
-
-            this.jumpVelocity += this.config.GRAVITY * framesElapsed;
-
-            // Minimum height has been reached.
-            if (this.yPos < this.minJumpHeight || this.speedDrop) {
-                this.reachedMinHeight = true;
-            }
-
-            // Reached max height
-            if (this.yPos < this.config.MAX_JUMP_HEIGHT || this.speedDrop) {
-                this.endJump();
-            }
-
-            // Back down at ground level. Jump completed.
-            if (this.yPos > this.groundYPos) {
-                this.reset();
-                this.jumpCount++;
-            }
-
-            this.update(deltaTime);
-        },
-
-        /**
-         * Set the speed drop. Immediately cancels the current jump.
-         */
-        setSpeedDrop() {
-            this.speedDrop = true;
-            this.jumpVelocity = 1;
-        },
-
-        /**
-         * @param {boolean} isDucking.
-         */
-        setDuck(isDucking) {
-            if (isDucking && this.status != Trex.status.DUCKING) {
-                this.update(0, Trex.status.DUCKING);
-                this.ducking = true;
-            } else if (this.status == Trex.status.DUCKING) {
-                this.update(0, Trex.status.RUNNING);
-                this.ducking = false;
-            }
-        },
-
-        /**
-         * Reset the t-rex to running at start of game.
-         */
-        reset() {
-            this.yPos = this.groundYPos;
-            this.jumpVelocity = 0;
-            this.jumping = false;
-            this.ducking = false;
-            this.update(0, Trex.status.RUNNING);
-            this.midair = false;
-            this.speedDrop = false;
-            this.jumpCount = 0;
-        }
-    };
-
-
     //******************************************************************************
 
     /**
@@ -1892,73 +1889,32 @@
      * @param {number} canvasWidth
      * @constructor
      */
-    function DistanceMeter(canvas, spritePos, canvasWidth) {
-        this.canvas = canvas;
-        this.canvasCtx = canvas.getContext('2d');
-        this.image = Runner.imageSprite;
-        this.spritePos = spritePos;
-        this.x = 0;
-        this.y = 5;
+    class DistanceMeter {
+        constructor(canvas, spritePos, canvasWidth) {
+            this.canvas = canvas;
+            this.canvasCtx = canvas.getContext('2d');
+            this.image = Runner.imageSprite;
+            this.spritePos = spritePos;
+            this.x = 0;
+            this.y = 5;
 
-        this.currentDistance = 0;
-        this.maxScore = 0;
-        this.highScore = 0;
-        this.container = null;
+            this.currentDistance = 0;
+            this.maxScore = 0;
+            this.highScore = 0;
+            this.container = null;
 
-        this.digits = [];
-        this.acheivement = false;
-        this.defaultString = '';
-        this.flashTimer = 0;
-        this.flashIterations = 0;
-        this.invertTrigger = false;
+            this.digits = [];
+            this.acheivement = false;
+            this.defaultString = '';
+            this.flashTimer = 0;
+            this.flashIterations = 0;
+            this.invertTrigger = false;
 
-        this.config = DistanceMeter.config;
-        this.maxScoreUnits = this.config.MAX_DISTANCE_UNITS;
-        this.init(canvasWidth);
-    };
+            this.config = DistanceMeter.config;
+            this.maxScoreUnits = this.config.MAX_DISTANCE_UNITS;
+            this.init(canvasWidth);
+        }
 
-
-    /**
-     * @enum {number}
-     */
-    DistanceMeter.dimensions = {
-        WIDTH: 10,
-        HEIGHT: 13,
-        DEST_WIDTH: 11
-    };
-
-
-    /**
-     * Y positioning of the digits in the sprite sheet.
-     * X position is always 0.
-     * @type {Array<number>}
-     */
-    DistanceMeter.yPos = [0, 13, 27, 40, 53, 67, 80, 93, 107, 120];
-
-
-    /**
-     * Distance meter config.
-     * @enum {number}
-     */
-    DistanceMeter.config = {
-        // Number of digits.
-        MAX_DISTANCE_UNITS: 5,
-
-        // Distance that causes achievement animation.
-        ACHIEVEMENT_DISTANCE: 100,
-
-        // Used for conversion from pixel distance to a scaled unit.
-        COEFFICIENT: 0.025,
-
-        // Flash duration in milliseconds.
-        FLASH_DURATION: 1000 / 4,
-
-        // Flash iterations for achievement animation.
-        FLASH_ITERATIONS: 3
-    };
-
-
-    DistanceMeter.prototype = {
         /**
          * Initialise the distance meter to '00000'.
          * @param {number} width Canvas width in px.
@@ -1975,7 +1931,7 @@
             }
 
             this.maxScore = parseInt(maxDistanceStr);
-        },
+        }
 
         /**
          * Calculate the xPos in the canvas.
@@ -1984,7 +1940,7 @@
         calcXPos(canvasWidth) {
             this.x = canvasWidth - (DistanceMeter.dimensions.DEST_WIDTH *
                 (this.maxScoreUnits + 1));
-        },
+        }
 
         /**
          * Draw a digit to canvas.
@@ -2031,7 +1987,7 @@
             );
 
             this.canvasCtx.restore();
-        },
+        }
 
         /**
          * Covert pixel distance to a 'real' distance.
@@ -2040,7 +1996,7 @@
          */
         getActualDistance(distance) {
             return distance ? Math.round(distance * this.config.COEFFICIENT) : 0;
-        },
+        }
 
         /**
          * Update the distance meter.
@@ -2107,7 +2063,7 @@
 
             this.drawHighScore();
             return playSound;
-        },
+        }
 
         /**
          * Draw the high score.
@@ -2119,7 +2075,7 @@
                 this.draw(i, parseInt(this.highScore[i], 10), true);
             }
             this.canvasCtx.restore();
-        },
+        }
 
         /**
          * Set the highscore as a array string.
@@ -2132,7 +2088,7 @@
                 distance).substr(-this.maxScoreUnits);
 
             this.highScore = ['10', '11', ''].concat(highScoreStr.split(''));
-        },
+        }
 
         /**
          * Reset the distance meter back to '00000'.
@@ -2141,6 +2097,46 @@
             this.update(0);
             this.acheivement = false;
         }
+    }
+
+
+    /**
+     * @enum {number}
+     */
+    DistanceMeter.dimensions = {
+        WIDTH: 10,
+        HEIGHT: 13,
+        DEST_WIDTH: 11
+    };
+
+
+    /**
+     * Y positioning of the digits in the sprite sheet.
+     * X position is always 0.
+     * @type {Array<number>}
+     */
+    DistanceMeter.yPos = [0, 13, 27, 40, 53, 67, 80, 93, 107, 120];
+
+
+    /**
+     * Distance meter config.
+     * @enum {number}
+     */
+    DistanceMeter.config = {
+        // Number of digits.
+        MAX_DISTANCE_UNITS: 5,
+
+        // Distance that causes achievement animation.
+        ACHIEVEMENT_DISTANCE: 100,
+
+        // Used for conversion from pixel distance to a scaled unit.
+        COEFFICIENT: 0.025,
+
+        // Flash duration in milliseconds.
+        FLASH_DURATION: 1000 / 4,
+
+        // Flash iterations for achievement animation.
+        FLASH_ITERATIONS: 3
     };
 
 
@@ -2153,36 +2149,21 @@
      * @param {Object} spritePos Position of image in sprite.
      * @param {number} containerWidth
      */
-    function Cloud(canvas, spritePos, containerWidth) {
-        this.canvas = canvas;
-        this.canvasCtx = this.canvas.getContext('2d');
-        this.spritePos = spritePos;
-        this.containerWidth = containerWidth;
-        this.xPos = containerWidth;
-        this.yPos = 0;
-        this.remove = false;
-        this.cloudGap = getRandomNum(Cloud.config.MIN_CLOUD_GAP,
-            Cloud.config.MAX_CLOUD_GAP);
+    class Cloud {
+        constructor(canvas, spritePos, containerWidth) {
+            this.canvas = canvas;
+            this.canvasCtx = this.canvas.getContext('2d');
+            this.spritePos = spritePos;
+            this.containerWidth = containerWidth;
+            this.xPos = containerWidth;
+            this.yPos = 0;
+            this.remove = false;
+            this.cloudGap = getRandomNum(Cloud.config.MIN_CLOUD_GAP,
+                Cloud.config.MAX_CLOUD_GAP);
 
-        this.init();
-    };
+            this.init();
+        }
 
-
-    /**
-     * Cloud object config.
-     * @enum {number}
-     */
-    Cloud.config = {
-        HEIGHT: 14,
-        MAX_CLOUD_GAP: 400,
-        MAX_SKY_LEVEL: 30,
-        MIN_CLOUD_GAP: 100,
-        MIN_SKY_LEVEL: 71,
-        WIDTH: 46
-    };
-
-
-    Cloud.prototype = {
         /**
          * Initialise the cloud. Sets the Cloud height.
          */
@@ -2190,7 +2171,7 @@
             this.yPos = getRandomNum(Cloud.config.MAX_SKY_LEVEL,
                 Cloud.config.MIN_SKY_LEVEL);
             this.draw();
-        },
+        }
 
         /**
          * Draw the cloud.
@@ -2212,7 +2193,7 @@
                 Cloud.config.WIDTH, Cloud.config.HEIGHT);
 
             this.canvasCtx.restore();
-        },
+        }
 
         /**
          * Update the cloud position.
@@ -2228,7 +2209,7 @@
                     this.remove = true;
                 }
             }
-        },
+        }
 
         /**
          * Check if the cloud is visible on the stage.
@@ -2237,6 +2218,20 @@
         isVisible() {
             return this.xPos + Cloud.config.WIDTH > 0;
         }
+    }
+
+
+    /**
+     * Cloud object config.
+     * @enum {number}
+     */
+    Cloud.config = {
+        HEIGHT: 14,
+        MAX_CLOUD_GAP: 400,
+        MAX_SKY_LEVEL: 30,
+        MIN_CLOUD_GAP: 100,
+        MIN_SKY_LEVEL: 71,
+        WIDTH: 46
     };
 
 
@@ -2245,37 +2240,21 @@
     /**
      * Nightmode shows a moon and stars on the horizon.
      */
-    function NightMode(canvas, spritePos, containerWidth) {
-        this.spritePos = spritePos;
-        this.canvas = canvas;
-        this.canvasCtx = canvas.getContext('2d');
-        this.xPos = containerWidth - 50;
-        this.yPos = 30;
-        this.currentPhase = 0;
-        this.opacity = 0;
-        this.containerWidth = containerWidth;
-        this.stars = [];
-        this.drawStars = false;
-        this.placeStars();
-    };
+    class NightMode {
+        constructor(canvas, spritePos, containerWidth) {
+            this.spritePos = spritePos;
+            this.canvas = canvas;
+            this.canvasCtx = canvas.getContext('2d');
+            this.xPos = containerWidth - 50;
+            this.yPos = 30;
+            this.currentPhase = 0;
+            this.opacity = 0;
+            this.containerWidth = containerWidth;
+            this.stars = [];
+            this.drawStars = false;
+            this.placeStars();
+        }
 
-    /**
-     * @enum {number}
-     */
-    NightMode.config = {
-        FADE_SPEED: 0.035,
-        HEIGHT: 40,
-        MOON_SPEED: 0.25,
-        NUM_STARS: 2,
-        STAR_SIZE: 9,
-        STAR_SPEED: 0.3,
-        STAR_MAX_Y: 70,
-        WIDTH: 20
-    };
-
-    NightMode.phases = [140, 120, 100, 60, 40, 20, 0];
-
-    NightMode.prototype = {
         /**
          * Update moving moon, changing phases.
          * @param {boolean} activated Whether night mode is activated.
@@ -2315,7 +2294,7 @@
                 this.placeStars();
             }
             this.drawStars = true;
-        },
+        }
 
         updateXPos(currentPos, speed) {
             if (currentPos < -NightMode.config.WIDTH) {
@@ -2324,7 +2303,7 @@
                 currentPos -= speed;
             }
             return currentPos;
-        },
+        }
 
         draw() {
             var moonSourceWidth = this.currentPhase == 3 ? NightMode.config.WIDTH * 2 :
@@ -2365,7 +2344,7 @@
 
             this.canvasCtx.globalAlpha = 1;
             this.canvasCtx.restore();
-        },
+        }
 
         // Do star placement.
         placeStars() {
@@ -2385,16 +2364,30 @@
                         NightMode.config.STAR_SIZE * i;
                 }
             }
-        },
+        }
 
         reset() {
             this.currentPhase = 0;
             this.opacity = 0;
             this.update(false);
         }
+    }
 
+    /**
+     * @enum {number}
+     */
+    NightMode.config = {
+        FADE_SPEED: 0.035,
+        HEIGHT: 40,
+        MOON_SPEED: 0.25,
+        NUM_STARS: 2,
+        STAR_SIZE: 9,
+        STAR_SPEED: 0.3,
+        STAR_MAX_Y: 70,
+        WIDTH: 20
     };
 
+    NightMode.phases = [140, 120, 100, 60, 40, 20, 0];
 
     //******************************************************************************
 
@@ -2405,35 +2398,23 @@
      * @param {Object} spritePos Horizon position in sprite.
      * @constructor
      */
-    function HorizonLine(canvas, spritePos) {
-        this.spritePos = spritePos;
-        this.canvas = canvas;
-        this.canvasCtx = canvas.getContext('2d');
-        this.sourceDimensions = {};
-        this.dimensions = HorizonLine.dimensions;
-        this.sourceXPos = [this.spritePos.x, this.spritePos.x +
-            this.dimensions.WIDTH];
-        this.xPos = [];
-        this.yPos = 0;
-        this.bumpThreshold = 0.5;
+    class HorizonLine {
+        constructor(canvas, spritePos) {
+            this.spritePos = spritePos;
+            this.canvas = canvas;
+            this.canvasCtx = canvas.getContext('2d');
+            this.sourceDimensions = {};
+            this.dimensions = HorizonLine.dimensions;
+            this.sourceXPos = [this.spritePos.x, this.spritePos.x +
+                this.dimensions.WIDTH];
+            this.xPos = [];
+            this.yPos = 0;
+            this.bumpThreshold = 0.5;
 
-        this.setSourceDimensions();
-        this.draw();
-    };
+            this.setSourceDimensions();
+            this.draw();
+        }
 
-
-    /**
-     * Horizon line dimensions.
-     * @enum {number}
-     */
-    HorizonLine.dimensions = {
-        WIDTH: 600,
-        HEIGHT: 12,
-        YPOS: 127
-    };
-
-
-    HorizonLine.prototype = {
         /**
          * Set the source dimensions of the horizon line.
          */
@@ -2454,14 +2435,14 @@
 
             this.xPos = [0, HorizonLine.dimensions.WIDTH];
             this.yPos = HorizonLine.dimensions.YPOS;
-        },
+        }
 
         /**
          * Return the crop x position of a type.
          */
         getRandomType() {
             return Math.random() > this.bumpThreshold ? this.dimensions.WIDTH : 0;
-        },
+        }
 
         /**
          * Draw the horizon line.
@@ -2478,7 +2459,7 @@
                 this.sourceDimensions.WIDTH, this.sourceDimensions.HEIGHT,
                 this.xPos[1], this.yPos,
                 this.dimensions.WIDTH, this.dimensions.HEIGHT);
-        },
+        }
 
         /**
          * Update the x position of an indivdual piece of the line.
@@ -2497,7 +2478,7 @@
                 this.xPos[line2] = this.xPos[line1] - this.dimensions.WIDTH;
                 this.sourceXPos[line1] = this.getRandomType() + this.spritePos.x;
             }
-        },
+        }
 
         /**
          * Update the horizon line.
@@ -2513,7 +2494,7 @@
                 this.updateXPos(1, increment);
             }
             this.draw();
-        },
+        }
 
         /**
          * Reset horizon to the starting position.
@@ -2522,6 +2503,17 @@
             this.xPos[0] = 0;
             this.xPos[1] = HorizonLine.dimensions.WIDTH;
         }
+    }
+
+
+    /**
+     * Horizon line dimensions.
+     * @enum {number}
+     */
+    HorizonLine.dimensions = {
+        WIDTH: 600,
+        HEIGHT: 12,
+        YPOS: 127
     };
 
 
@@ -2535,43 +2527,29 @@
      * @param {number} gapCoefficient
      * @constructor
      */
-    function Horizon(canvas, spritePos, dimensions, gapCoefficient) {
-        this.canvas = canvas;
-        this.canvasCtx = this.canvas.getContext('2d');
-        this.config = Horizon.config;
-        this.dimensions = dimensions;
-        this.gapCoefficient = gapCoefficient;
-        this.obstacles = [];
-        this.obstacleHistory = [];
-        this.horizonOffsets = [0, 0];
-        this.cloudFrequency = this.config.CLOUD_FREQUENCY;
-        this.spritePos = spritePos;
-        this.nightMode = null;
+    class Horizon {
+        constructor(canvas, spritePos, dimensions, gapCoefficient) {
+            this.canvas = canvas;
+            this.canvasCtx = this.canvas.getContext('2d');
+            this.config = Horizon.config;
+            this.dimensions = dimensions;
+            this.gapCoefficient = gapCoefficient;
+            this.obstacles = [];
+            this.obstacleHistory = [];
+            this.horizonOffsets = [0, 0];
+            this.cloudFrequency = this.config.CLOUD_FREQUENCY;
+            this.spritePos = spritePos;
+            this.nightMode = null;
 
-        // Cloud
-        this.clouds = [];
-        this.cloudSpeed = this.config.BG_CLOUD_SPEED;
+            // Cloud
+            this.clouds = [];
+            this.cloudSpeed = this.config.BG_CLOUD_SPEED;
 
-        // Horizon
-        this.horizonLine = null;
-        this.init();
-    };
+            // Horizon
+            this.horizonLine = null;
+            this.init();
+        }
 
-
-    /**
-     * Horizon config.
-     * @enum {number}
-     */
-    Horizon.config = {
-        BG_CLOUD_SPEED: 0.2,
-        BUMPY_THRESHOLD: .3,
-        CLOUD_FREQUENCY: .5,
-        HORIZON_HEIGHT: 16,
-        MAX_CLOUDS: 6
-    };
-
-
-    Horizon.prototype = {
         /**
          * Initialise the horizon. Just add the line and a cloud. No obstacles.
          */
@@ -2580,7 +2558,7 @@
             this.horizonLine = new HorizonLine(this.canvas, this.spritePos.HORIZON);
             this.nightMode = new NightMode(this.canvas, this.spritePos.MOON,
                 this.dimensions.WIDTH);
-        },
+        }
 
         /**
          * @param {number} deltaTime
@@ -2599,7 +2577,7 @@
             if (updateObstacles) {
                 this.updateObstacles(deltaTime, currentSpeed);
             }
-        },
+        }
 
         /**
          * Update the cloud positions.
@@ -2629,7 +2607,7 @@
             } else {
                 this.addCloud();
             }
-        },
+        }
 
         /**
          * Update the obstacle positions.
@@ -2665,11 +2643,11 @@
                 // Create new obstacles.
                 this.addNewObstacle(currentSpeed);
             }
-        },
+        }
 
         removeFirstObstacle() {
             this.obstacles.shift();
-        },
+        }
 
         /**
          * Add a new obstacle.
@@ -2697,7 +2675,7 @@
                     this.obstacleHistory.splice(Runner.config.MAX_OBSTACLE_DUPLICATION);
                 }
             }
-        },
+        }
 
         /**
          * Returns whether the previous two obstacles are the same as the next one.
@@ -2712,7 +2690,7 @@
                     duplicateCount + 1 : 0;
             }
             return duplicateCount >= Runner.config.MAX_OBSTACLE_DUPLICATION;
-        },
+        }
 
         /**
          * Reset the horizon layer.
@@ -2722,7 +2700,7 @@
             this.obstacles = [];
             this.horizonLine.reset();
             this.nightMode.reset();
-        },
+        }
 
         /**
          * Update the canvas width and scaling.
@@ -2732,7 +2710,7 @@
         resize(width, height) {
             this.canvas.width = width;
             this.canvas.height = height;
-        },
+        }
 
         /**
          * Add a new cloud to the horizon.
@@ -2741,6 +2719,19 @@
             this.clouds.push(new Cloud(this.canvas, this.spritePos.CLOUD,
                 this.dimensions.WIDTH));
         }
+    }
+
+
+    /**
+     * Horizon config.
+     * @enum {number}
+     */
+    Horizon.config = {
+        BG_CLOUD_SPEED: 0.2,
+        BUMPY_THRESHOLD: .3,
+        CLOUD_FREQUENCY: .5,
+        HORIZON_HEIGHT: 16,
+        MAX_CLOUDS: 6
     };
 })();
 
