@@ -195,7 +195,7 @@
          */
         init() {
             // Hide the static icon.
-            document.querySelector('.' + Runner.classes.ICON).style.visibility =
+            document.querySelector(`.${Runner.classes.ICON}`).style.visibility =
                 'hidden';
 
             this.adjustDimensions();
@@ -287,8 +287,8 @@
 
                 // Outer container and distance meter.
                 if (this.playing || this.crashed || this.paused) {
-                    this.containerEl.style.width = this.dimensions.WIDTH + 'px';
-                    this.containerEl.style.height = this.dimensions.HEIGHT + 'px';
+                    this.containerEl.style.width = `${this.dimensions.WIDTH}px`;
+                    this.containerEl.style.height = `${this.dimensions.HEIGHT}px`;
                     this.distanceMeter.update(0, Math.ceil(this.distanceRan));
                     this.stop();
                 } else {
@@ -313,10 +313,7 @@
                 this.tRex.playingIntro = true;
 
                 // CSS animation definition.
-                const keyframes = '@-webkit-keyframes intro { ' +
-                    'from { width:' + Trex.config.WIDTH + 'px }' +
-                    'to { width: ' + this.dimensions.WIDTH + 'px }' +
-                    '}';
+                const keyframes = `@-webkit-keyframes intro { from { width:${Trex.config.WIDTH}px }to { width: ${this.dimensions.WIDTH}px }}`;
 
                 // create a style sheet to put the keyframe rule in
                 // and then place the style sheet in the html head
@@ -328,7 +325,7 @@
                     this.startGame.bind(this));
 
                 this.containerEl.style.webkitAnimation = 'intro .4s ease-out 1 both';
-                this.containerEl.style.width = this.dimensions.WIDTH + 'px';
+                this.containerEl.style.width = `${this.dimensions.WIDTH}px`;
 
                 // if (this.touchController) {
                 //     this.outerContainerEl.appendChild(this.touchController);
@@ -711,7 +708,7 @@
 
             const cssScale = scale;
             this.containerEl.style.transform =
-                'scale(' + cssScale + ') translateY(' + translateY + 'px)';
+                `scale(${cssScale}) translateY(${translateY}px)`;
         }
 
         /**
@@ -945,8 +942,8 @@
             canvas.width = oldWidth * ratio;
             canvas.height = oldHeight * ratio;
 
-            canvas.style.width = oldWidth + 'px';
-            canvas.style.height = oldHeight + 'px';
+            canvas.style.width = `${oldWidth}px`;
+            canvas.style.height = `${oldHeight}px`;
 
             // Scale the context to counter the fact that we've manually scaled
             // our canvas element.
@@ -955,8 +952,8 @@
         } else if (devicePixelRatio == 1) {
             // Reset the canvas width / height. Fixes scaling bug when the page is
             // zoomed and the devicePixelRatio changes accordingly.
-            canvas.style.width = canvas.width + 'px';
-            canvas.style.height = canvas.height + 'px';
+            canvas.style.width = `${canvas.width}px`;
+            canvas.style.height = `${canvas.height}px`;
         }
         return false;
     };
@@ -994,8 +991,7 @@
      */
     function createCanvas(container, width, height, opt_classname) {
         const canvas = document.createElement('canvas');
-        canvas.className = opt_classname ? Runner.classes.CANVAS + ' ' +
-            opt_classname : Runner.classes.CANVAS;
+        canvas.className = opt_classname ? `${Runner.classes.CANVAS} ${opt_classname}` : Runner.classes.CANVAS;
         canvas.width = width;
         canvas.height = height;
         container.appendChild(canvas);
@@ -2014,7 +2010,7 @@
                 if (distance > this.maxScore && this.maxScoreUnits ==
                     this.config.MAX_DISTANCE_UNITS) {
                     this.maxScoreUnits++;
-                    this.maxScore = parseInt(this.maxScore + '9');
+                    this.maxScore = parseInt(`${this.maxScore}9`);
                 } else {
                     this.distance = 0;
                 }
