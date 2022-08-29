@@ -23,7 +23,6 @@
             this.outerContainerEl = document.querySelector(outerContainerId);
             this.containerEl = null;
             this.snackbarEl = null;
-            this.detailsButton = this.outerContainerEl.querySelector('#details-button');
 
             this.config = opt_config || Runner.config;
 
@@ -476,16 +475,9 @@
             document.addEventListener(Runner.events.KEYDOWN, this);
             document.addEventListener(Runner.events.KEYUP, this);
 
-            if (IS_MOBILE) {
-                // Mobile only touch devices.
-                this.touchController.addEventListener(Runner.events.TOUCHSTART, this);
-                this.touchController.addEventListener(Runner.events.TOUCHEND, this);
-                this.containerEl.addEventListener(Runner.events.TOUCHSTART, this);
-            } else {
-                // Mouse.
-                document.addEventListener(Runner.events.MOUSEDOWN, this);
-                document.addEventListener(Runner.events.MOUSEUP, this);
-            }
+            // Mouse.
+            document.addEventListener(Runner.events.MOUSEDOWN, this);
+            document.addEventListener(Runner.events.MOUSEUP, this);
         }
 
         /**
@@ -510,37 +502,41 @@
          * @param {Event} e
          */
         onKeyDown(e) {
-            // Prevent native page scrolling whilst tapping on mobile.
-            if (IS_MOBILE && this.playing) {
-                e.preventDefault();
+            if (!this.crashed && (Runner.keycodes.JUMP[e.keyCode] || e.type == Runner.events.TOUCHSTART)) {
+                this.doJumpStart()
             }
 
-            if (e.target != this.detailsButton) {
-                if (!this.crashed && (Runner.keycodes.JUMP[e.keyCode] ||
-                    e.type == Runner.events.TOUCHSTART)) {
-                    if (!this.playing) {
-                        // this.loadSounds();
-                        this.playing = true;
-                        this.update();
-                        if (window.errorPageController) {
-                            errorPageController.trackEasterEgg();
-                        }
-                    }
-                    //  Play sound effect and jump on starting the game for the first time.
-                    if (!this.tRex.jumping && !this.tRex.ducking) {
-                        this.playSound(this.soundFx.BUTTON_PRESS);
-                        this.tRex.startJump(this.currentSpeed);
-                    }
-                }
-
-                if (this.crashed && e.type == Runner.events.TOUCHSTART &&
-                    e.currentTarget == this.containerEl) {
-                    this.restart();
-                }
+            if (this.crashed && e.type == Runner.events.TOUCHSTART &&
+                e.currentTarget == this.containerEl) {
+                this.restart();
             }
 
             if (this.playing && !this.crashed && Runner.keycodes.DUCK[e.keyCode]) {
                 e.preventDefault();
+                this.doDuckStart()
+            }
+        }
+
+        doJumpStart(){
+            if (!this.crashed) {
+                if (!this.playing) {
+                    // this.loadSounds();
+                    this.playing = true;
+                    this.update();
+                    if (window.errorPageController) {
+                        errorPageController.trackEasterEgg();
+                    }
+                }
+                //  Play sound effect and jump on starting the game for the first time.
+                if (!this.tRex.jumping && !this.tRex.ducking) {
+                    this.playSound(this.soundFx.BUTTON_PRESS);
+                    this.tRex.startJump(this.currentSpeed);
+                }
+            }
+        }
+
+        doDuckStart(){
+            if (this.playing && !this.crashed) {
                 if (this.tRex.jumping) {
                     // Speed drop, activated only when jump key is not pressed.
                     this.tRex.setSpeedDrop();
@@ -2731,15 +2727,13 @@
 
 function onDocumentLoad() {
     console.log("Loaded!");
-    new Runner('.interstitial-wrapper');
+    var runner = new Runner('.interstitial-wrapper');
 
     const { emit, listen } = window.__TAURI__.event;
 
-    console.log("here");
     listen("jump", _ev => {
-        console.log("everywhere!");
+        runner.doJumpStart();
     });
-    console.log("there");
 }
 
 document.addEventListener('DOMContentLoaded', onDocumentLoad);
