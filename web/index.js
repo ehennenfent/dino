@@ -506,11 +506,6 @@
                 this.doJumpStart()
             }
 
-            if (this.crashed && e.type == Runner.events.TOUCHSTART &&
-                e.currentTarget == this.containerEl) {
-                this.restart();
-            }
-
             if (this.playing && !this.crashed && Runner.keycodes.DUCK[e.keyCode]) {
                 e.preventDefault();
                 this.doDuckStart()
@@ -557,24 +552,41 @@
                 e.type == Runner.events.TOUCHEND ||
                 e.type == Runner.events.MOUSEDOWN;
 
-            if (this.isRunning() && isjumpKey) {
-                this.tRex.endJump();
+            if (isjumpKey) {
+                this.doJumpStop();
             } else if (Runner.keycodes.DUCK[keyCode]) {
-                this.tRex.speedDrop = false;
-                this.tRex.setDuck(false);
-            } else if (this.crashed) {
+                this.doDuckStop();
+            }
+        }
+
+        doJumpStop() {
+            if (this.crashed) {
                 // Check that enough time has elapsed before allowing jump key to restart.
                 const deltaTime = getTimeStamp() - this.time;
-
-                if (Runner.keycodes.RESTART[keyCode] || this.isLeftClickOnCanvas(e) ||
-                    (deltaTime >= this.config.GAMEOVER_CLEAR_TIME &&
-                        Runner.keycodes.JUMP[keyCode])) {
+                if ((deltaTime >= this.config.GAMEOVER_CLEAR_TIME)) {
                     this.restart();
                 }
-            } else if (this.paused && isjumpKey) {
-                // Reset the jump state
+            }
+            if (this.isRunning) {
+                this.tRex.endJump();
+            } else if (this.paused) {
                 this.tRex.reset();
                 this.play();
+            }
+        }
+
+        doDuckStop(){
+            this.tRex.speedDrop = false;
+            this.tRex.setDuck(false);
+        }
+
+        doSteady(){
+            if (this.tRex.ducking) {
+                this.doDuckStop();
+            }
+
+            if (this.tRex.jumping){
+                this.doJumpStop();
             }
         }
 
@@ -615,6 +627,7 @@
             vibrate(200);
 
             this.stop();
+            console.log("Crashed!");
             this.crashed = true;
             this.distanceMeter.acheivement = false;
 
@@ -2731,8 +2744,17 @@ function onDocumentLoad() {
 
     const { emit, listen } = window.__TAURI__.event;
 
-    listen("jump", _ev => {
+    listen("j", _ev => {
         runner.doJumpStart();
+        setTimeout(() => runner.doJumpStop(), 250);
+    });
+
+    listen("d", _ev => {
+        runner.doDuckStart();
+    });
+
+    listen("s", _ev => {
+        runner.doSteady();
     });
 }
 
