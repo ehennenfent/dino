@@ -30,7 +30,7 @@ fn jump(window: tauri::Window) {
     std::thread::spawn(move || loop {
         match socket.recv_from(&mut buf) {
             Ok((_amt, _src)) => {
-                let parsed: &str = std::str::from_utf8(&buf).unwrap().trim();
+                let parsed: &str = std::str::from_utf8(&buf[..1]).unwrap().trim();
                 println!("Received: {}", parsed);
                 window.emit(parsed, {}).unwrap();
             }

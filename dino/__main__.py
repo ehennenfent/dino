@@ -19,6 +19,7 @@ from dino.openscale_serial.openscale_reader import (
 from dino.pattern_matching.patterns import eq_1p, mag_rel, abs_rel
 from dino.physics import PhysicsSolver
 from dino.simulate import Simulator
+from dino.socket_rpc import SocketSender
 
 SHORT_SAMPLES = 3
 POS_LARGE_THRESH = 20
@@ -40,6 +41,8 @@ def main():
     force_matcher = PatternMatcher()
     velocity_matcher = PatternMatcher()
 
+    socket_rpc = SocketSender()
+
     # Add a buffer to store the last several samples
     buffer = Buffer()
 
@@ -53,6 +56,7 @@ def main():
     setup_jump_duck_handlers(
         state_machine,
         lambda color: plotter.draw_vertical_line(buffer.last_item[0], color),
+        socket_rpc,
     )
 
     # Plot the data as it comes in
@@ -158,16 +162,23 @@ def register_default_patterns(force_matcher, physics, state_machine, velocity_ma
     )
 
 
-def setup_jump_duck_handlers(state_machine, draw_vline):
-    state_machine.register_callback(
-        State.STEADY, State.JUMPING, partial(draw_vline, "green")
-    )
-    state_machine.register_callback(
-        State.DUCKING, State.JUMPING, partial(draw_vline, "green")
-    )
-    state_machine.register_callback(
-        State.STEADY, State.DUCKING, partial(draw_vline, "red")
-    )
+def setup_jump_duck_handlers(state_machine, draw_vline, socket_rpc):
+    def on_jump():
+        draw_vline("green")
+        socket_rpc.send(b"j")
+
+    def on_duck():
+        draw_vline("red")
+        socket_rpc.send(b"d")
+
+    def on_steady():
+        socket_rpc.send(b"s")
+
+    state_machine.register_callback(State.STEADY, State.JUMPING, on_jump)
+    state_machine.register_callback(State.DUCKING, State.JUMPING, on_jump)
+    state_machine.register_callback(State.STEADY, State.DUCKING, on_duck)
+    state_machine.register_callback(State.DUCKING, State.STEADY, on_steady)
+    state_machine.register_callback(State.JUMPING, State.STEADY, on_steady)
 
 
 if __name__ == "__main__":
