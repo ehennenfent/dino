@@ -26,7 +26,7 @@
         "icons/128x128.png",
         "icons/icon.ico"
       ],
-      "identifier": "com.tauri.dev",
+      "identifier": "com.hennenfent.dino",
       "longDescription": "",
       "macOS": {
         "entitlements": null,
