@@ -16,7 +16,12 @@ from dino.openscale_serial.openscale_reader import (
     read_from_serial,
     SAMPLES_PER_SEC,
 )
-from dino.pattern_matching.patterns import eq_1p, mag_rel, abs_rel, tare
+from dino.pattern_matching.patterns import (
+    mag_rel,
+    tare,
+    peak_up,
+    peak_down,
+)
 from dino.physics import PhysicsSolver
 from dino.simulate import Simulator
 from dino.socket_rpc import SocketSender
@@ -148,17 +153,12 @@ def register_default_patterns(force_matcher, physics, state_machine, velocity_ma
     )
     velocity_matcher.register_pattern(
         "negative",
-        (abs_rel(operator.lt, NEG_THRESH),) * SHORT_SAMPLES,
+        (peak_down, peak_down, peak_down),
         partial(state_machine.receive_event, Event.VELOCITY_NEGATIVE),
     )
     velocity_matcher.register_pattern(
-        "positive_small",
-        (abs_rel(operator.gt, POS_SMALL_THRESH),) * SHORT_SAMPLES,
-        partial(state_machine.receive_event, Event.VELOCITY_POSITIVE_SMALL),
-    )
-    velocity_matcher.register_pattern(
         "positive_large",
-        (abs_rel(operator.gt, POS_LARGE_THRESH),) * SHORT_SAMPLES,
+        (peak_up, peak_up, peak_up),
         partial(state_machine.receive_event, Event.VELOCITY_POSITIVE_LARGE),
     )
 

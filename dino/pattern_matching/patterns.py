@@ -1,6 +1,8 @@
 from functools import partial, reduce
 import operator
 
+DUCK_DECREASE_THRESHOLD = 2
+
 JUMP_INCREASE_THRESHOLD = 3
 
 
@@ -87,4 +89,4 @@ def peak_up(a, b):
 
 
 def peak_down(a, b):
-    return a < (b - 1)
+    return a < (b - DUCK_DECREASE_THRESHOLD)
