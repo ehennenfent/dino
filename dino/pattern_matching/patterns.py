@@ -1,6 +1,8 @@
 from functools import partial, reduce
 import operator
 
+JUMP_INCREASE_THRESHOLD = 3
+
 
 def anything(_a, _b):
     return True
@@ -23,6 +25,8 @@ def _arbitrary_comparison_thresh(comparator, threshold, a, b):
 
 
 def ne_thresh(threshold: float, a, b):
+    if b == 0:
+        return a > 100 * threshold
     return abs(a - b) / b > threshold
 
 
@@ -76,3 +80,11 @@ def abs_rel(op, val):
 
 def tare(a, b):
     return eq_5p(a, b) or (abs(a) < 1 and abs(b) < 1)
+
+
+def peak_up(a, b):
+    return a > (b + JUMP_INCREASE_THRESHOLD)
+
+
+def peak_down(a, b):
+    return a < (b - 1)
