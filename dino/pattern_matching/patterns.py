@@ -27,6 +27,8 @@ def ne_thresh(threshold: float, a, b):
 
 
 def eq_thresh(threshold: float, a, b):
+    if b == 0:
+        return a < 100 * threshold
     return abs(a - b) / b < threshold
 
 
@@ -70,3 +72,7 @@ def mag_rel(op, mag):
 
 def abs_rel(op, val):
     return lambda a, _: op(a, val)
+
+
+def tare(a, b):
+    return eq_5p(a, b) or (abs(a) < 1 and abs(b) < 1)

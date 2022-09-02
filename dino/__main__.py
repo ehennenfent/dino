@@ -16,7 +16,7 @@ from dino.openscale_serial.openscale_reader import (
     read_from_serial,
     SAMPLES_PER_SEC,
 )
-from dino.pattern_matching.patterns import eq_1p, mag_rel, abs_rel
+from dino.pattern_matching.patterns import eq_1p, mag_rel, abs_rel, tare
 from dino.physics import PhysicsSolver
 from dino.simulate import Simulator
 from dino.socket_rpc import SocketSender
@@ -137,7 +137,8 @@ def main():
 def register_default_patterns(force_matcher, physics, state_machine, velocity_matcher):
     force_matcher.register_pattern(
         "steady_1s",
-        (eq_1p,) * SAMPLES_PER_SEC,  # 20 samples within 1% of each other
+        (tare,)
+        * SAMPLES_PER_SEC,  # 20 samples either close to each other or very small
         physics.calibrate_steady_state,
     )
     velocity_matcher.register_pattern(

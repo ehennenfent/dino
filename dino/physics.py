@@ -35,6 +35,7 @@ class PhysicsSolver:
                 raise RuntimeError(
                     f"Scale hasn't been tared, but we're reading {maybe_tare} lbs on average"
                 )
+            print("Tared at", maybe_tare)
             self.tare_weight = maybe_tare
         else:
             last_average = self.last_second_average
