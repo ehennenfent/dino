@@ -3,7 +3,7 @@ import operator
 
 DUCK_DECREASE_THRESHOLD = 2
 
-JUMP_INCREASE_THRESHOLD = 3
+JUMP_INCREASE_THRESHOLD = 6
 
 
 def anything(_a, _b):

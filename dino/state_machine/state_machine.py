@@ -36,7 +36,7 @@ class DinoStateMachine:
             if event == Event.VELOCITY_STEADY:
                 new_state = State.STEADY
             # Revert to steady after time passes
-            if self.time_in_state >= SAMPLES_PER_SEC:
+            if self.time_in_state >= SAMPLES_PER_SEC // 5:
                 new_state = State.STEADY
         elif self.current_state == State.DUCKING:
             if event == Event.VELOCITY_POSITIVE_SMALL:
@@ -46,13 +46,15 @@ class DinoStateMachine:
 
         self.transition(new_state)
 
+    def tick(self, *_args):
+        self.time_in_state += 1
+
     def transition(self, new_state: State):
         if new_state in self.allowed_transitions.get(self.current_state, set()):
             if new_state != self.current_state:
                 print(self.current_state, "-->", new_state)
                 self.time_in_state = 0
 
-            self.time_in_state += 1
             maybe_callback = self.transition_callbacks.get(self.current_state, {}).get(
                 new_state, None
             )

@@ -101,6 +101,8 @@ def main():
         partial(Buffer.call_with_underlying, velocity_matcher.match)
     )
 
+    buffer.register_callback(partial(state_machine.tick))
+
     # Either ingest or simulate the data
     if args.command == "plot":
         # Create a reader that feeds data to the buffer
@@ -151,14 +153,14 @@ def register_default_patterns(force_matcher, physics, state_machine, velocity_ma
         (mag_rel(operator.lt, STABLE_THRESH),) * (SAMPLES_PER_SEC // 5),
         partial(state_machine.receive_event, Event.VELOCITY_STEADY),
     )
-    velocity_matcher.register_pattern(
-        "negative",
-        (peak_down, peak_down, peak_down),
-        partial(state_machine.receive_event, Event.VELOCITY_NEGATIVE),
-    )
+    # velocity_matcher.register_pattern(
+    #     "negative",
+    #     (peak_down, peak_down, peak_down),
+    #     partial(state_machine.receive_event, Event.VELOCITY_NEGATIVE),
+    # )
     velocity_matcher.register_pattern(
         "positive_large",
-        (peak_up, peak_up, peak_up),
+        (peak_up, peak_up),
         partial(state_machine.receive_event, Event.VELOCITY_POSITIVE_LARGE),
     )
 
@@ -173,6 +175,7 @@ def setup_jump_duck_handlers(state_machine, draw_vline, socket_rpc):
         socket_rpc.send(b"d")
 
     def on_steady():
+        draw_vline("orange")
         socket_rpc.send(b"s")
 
     state_machine.register_callback(State.STEADY, State.JUMPING, on_jump)
