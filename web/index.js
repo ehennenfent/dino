@@ -2761,13 +2761,13 @@ function onDocumentLoad() {
         runner.doSteady();
     });
 
-   runner.distanceMeter.setHighScore(invoke('getHighScore'));
+    const highScore = invoke('get_high_score');
+    // runner.highestScore = highScore;
+    runner.distanceMeter.setHighScore(highScore);
 
     runner.highScoreCallback = (score) => {
         emit("saveHighScore", score)
     }
-
-    emit("gameLoaded", {});
 }
 
 document.addEventListener('DOMContentLoaded', onDocumentLoad);
