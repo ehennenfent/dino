@@ -38,10 +38,6 @@ def main():
 
     # Create a matplotlib window to view the animated data
     plotter = Plotter(n_derivates=args.n_derivatives)
-
-    # Make a state machine to keep track of what part of a jump we're in
-    state_machine = DinoStateMachine()
-
     # Make a pattern matcher to help us recognize trends in the data
     force_matcher = PatternMatcher()
     velocity_matcher = PatternMatcher()
@@ -55,14 +51,8 @@ def main():
     physics = PhysicsSolver(buffer)
 
     # Create some patterns
-    register_default_patterns(force_matcher, physics, state_machine, velocity_matcher)
-
-    # Set up something to do when we detect a jump or a duck
-    setup_jump_duck_handlers(
-        state_machine,
-        lambda color: plotter.draw_vertical_line(buffer.last_item[0], color),
-        socket_rpc,
-    )
+    register_default_patterns(force_matcher, physics, velocity_matcher,         lambda color: plotter.draw_vertical_line(buffer.last_item[0], color),
+        socket_rpc)
 
     # Plot the data as it comes in
     def pass_tared_to_plotter(last_item):
@@ -100,8 +90,6 @@ def main():
     physics.velocity.register_callback(
         partial(Buffer.call_with_underlying, velocity_matcher.match)
     )
-
-    buffer.register_callback(partial(state_machine.tick))
 
     # Either ingest or simulate the data
     if args.command == "plot":
@@ -141,7 +129,15 @@ def main():
     reader.stop()
 
 
-def register_default_patterns(force_matcher, physics, state_machine, velocity_matcher):
+def register_default_patterns(force_matcher, physics, velocity_matcher, draw_vline, socket_rpc):
+    def on_jump():
+        draw_vline("green")
+        socket_rpc.send(b"j")
+
+    def on_steady():
+        # draw_vline("orange")
+        socket_rpc.send(b"s")
+
     force_matcher.register_pattern(
         "steady_1s",
         (tare,)
@@ -151,38 +147,13 @@ def register_default_patterns(force_matcher, physics, state_machine, velocity_ma
     velocity_matcher.register_pattern(
         "steady_velocity",
         (mag_rel(operator.lt, STABLE_THRESH),) * (SAMPLES_PER_SEC // 5),
-        partial(state_machine.receive_event, Event.VELOCITY_STEADY),
+        on_steady,
     )
-    # velocity_matcher.register_pattern(
-    #     "negative",
-    #     (peak_down, peak_down, peak_down),
-    #     partial(state_machine.receive_event, Event.VELOCITY_NEGATIVE),
-    # )
     velocity_matcher.register_pattern(
         "positive_large",
         (peak_up, peak_up),
-        partial(state_machine.receive_event, Event.VELOCITY_POSITIVE_LARGE),
+        on_jump,
     )
-
-
-def setup_jump_duck_handlers(state_machine, draw_vline, socket_rpc):
-    def on_jump():
-        draw_vline("green")
-        socket_rpc.send(b"j")
-
-    def on_duck():
-        draw_vline("red")
-        socket_rpc.send(b"d")
-
-    def on_steady():
-        draw_vline("orange")
-        socket_rpc.send(b"s")
-
-    state_machine.register_callback(State.STEADY, State.JUMPING, on_jump)
-    state_machine.register_callback(State.DUCKING, State.JUMPING, on_jump)
-    state_machine.register_callback(State.STEADY, State.DUCKING, on_duck)
-    state_machine.register_callback(State.DUCKING, State.STEADY, on_steady)
-    state_machine.register_callback(State.JUMPING, State.STEADY, on_steady)
 
 
 if __name__ == "__main__":
