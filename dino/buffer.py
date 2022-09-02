@@ -40,3 +40,9 @@ class Buffer:
 
     def clear(self):
         self.buffer.clear()
+
+    def __getitem__(self, item):
+        return self.buffer[item]
+
+    def __iter__(self):
+        return iter(self.buffer)

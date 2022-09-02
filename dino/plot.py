@@ -66,6 +66,7 @@ class Plotter:
         self.series: t.Dict[str, t.Deque[t.Tuple]] = {}
         self.n_derivatives = n_derivates
         self.vertical_lines = []
+        self.min_x = 0
 
         if platform_name == "windows":
             try:
@@ -83,8 +84,8 @@ class Plotter:
         """Called once per interval to update the displayed graph"""
         self.plot.clear()
         for label, data in self.series.items():
-            xs = [i[0] for i in data]
-            ys = [i[1] for i in data]
+            xs = [i[0] for i in data if i[0] >= self.min_x]
+            ys = [i[1] for i in data if i[0] >= self.min_x]
 
             self.plot.plot(xs, ys, label=label)
 
@@ -96,7 +97,8 @@ class Plotter:
                 )
 
         for x, color in self.vertical_lines:
-            self._render_vertical_line(x, color)
+            if x >= self.min_x:
+                self._render_vertical_line(x, color)
 
         # Format plot
         plt.xticks(rotation=45, ha="right")
@@ -132,3 +134,6 @@ class Plotter:
 
     def _render_vertical_line(self, x, color="red"):
         self.plot.vlines(x=x, ymin=-50, ymax=50, colors=color)
+
+    def set_min_x(self, new):
+        self.min_x = new

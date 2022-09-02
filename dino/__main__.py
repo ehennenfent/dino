@@ -68,6 +68,10 @@ def main():
         )
     )
 
+    buffer.register_callback(
+        lambda buffer: plotter.set_min_x(buffer[0][0])
+    )
+
     if args.n_integrals >= 1:
         physics.velocity.register_callback(
             partial(
