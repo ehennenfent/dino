@@ -28,7 +28,7 @@ class PhysicsSolver:
         )
 
     def calibrate_steady_state(self):
-        self.velocity.clear()
+        self.zero_velocity()
         if self.tare_weight is None:
             maybe_tare = self.last_second_average
             if abs(maybe_tare) > TARE_THRESHOLD:
@@ -78,3 +78,8 @@ class PhysicsSolver:
                 *add_entry(last_velocity, (ts, self.deviation_from_steady(y)))
             )
             self.position.append(*add_entry(last_position, self.velocity.last_item))
+
+    def zero_velocity(self):
+        if not self.velocity.is_empty():
+            (ts, _) = self.velocity.last_item
+            self.velocity.buffer[-1] = (ts, 0)
