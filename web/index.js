@@ -2761,9 +2761,7 @@ function onDocumentLoad() {
         runner.doSteady();
     });
 
-    const highScore = invoke('get_high_score');
-    // runner.highestScore = highScore;
-    runner.distanceMeter.setHighScore(highScore);
+    invoke('get_high_score').then((highScore) => runner.distanceMeter.setHighScore(highScore));
 
     runner.highScoreCallback = (score) => {
         emit("saveHighScore", score)
