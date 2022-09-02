@@ -66,6 +66,8 @@
             this.images = {};
             this.imagesLoaded = 0;
 
+            this.highScoreCallback = null;
+
             if (this.isDisabled()) {
                 this.setupDisabledRunner();
             } else {
@@ -646,6 +648,7 @@
             if (this.distanceRan > this.highestScore) {
                 this.highestScore = Math.ceil(this.distanceRan);
                 this.distanceMeter.setHighScore(this.highestScore);
+                this.highScoreCallback(this.highestScore);
             }
 
             // Reset the time clock.
@@ -2743,6 +2746,7 @@ function onDocumentLoad() {
     var runner = new Runner('.interstitial-wrapper');
 
     const { emit, listen } = window.__TAURI__.event;
+    const invoke = window.__TAURI__.invoke;
 
     listen("j", _ev => {
         runner.doJumpStart();
@@ -2756,6 +2760,14 @@ function onDocumentLoad() {
     listen("s", _ev => {
         runner.doSteady();
     });
+
+   runner.distanceMeter.setHighScore(invoke('getHighScore'));
+
+    runner.highScoreCallback = (score) => {
+        emit("saveHighScore", score)
+    }
+
+    emit("gameLoaded", {});
 }
 
 document.addEventListener('DOMContentLoaded', onDocumentLoad);
