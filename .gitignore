@@ -130,3 +130,4 @@ dmypy.json
 
 # Pycharm CE
 .idea/
+src-tauri/.dino_score
